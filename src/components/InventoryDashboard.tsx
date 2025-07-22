@@ -2,9 +2,10 @@ import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { AlertTriangle, Package, ShoppingCart, TrendingDown } from 'lucide-react';
+import { AlertTriangle, Package, ShoppingCart, TrendingDown, RefreshCw } from 'lucide-react';
 import { ProductList } from './ProductList';
 import { ReorderDialog } from './ReorderDialog';
+import { LocationSelector, Location } from './LocationSelector';
 
 export interface Product {
   id: string;
@@ -69,6 +70,8 @@ export const InventoryDashboard: React.FC = () => {
   const [products] = useState<Product[]>(mockProducts);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [showReorderDialog, setShowReorderDialog] = useState(false);
+  const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   const lowStockProducts = products.filter(p => p.currentStock <= p.reorderPoint);
   const totalValue = products.reduce((sum, p) => sum + (p.currentStock * p.unitCost), 0);
@@ -79,8 +82,53 @@ export const InventoryDashboard: React.FC = () => {
     setShowReorderDialog(true);
   };
 
+  const handleLocationSelect = (location: Location) => {
+    setSelectedLocation(location);
+  };
+
+  const handleSyncSquareData = async () => {
+    if (!selectedLocation) return;
+    
+    setIsLoading(true);
+    // TODO: Replace with actual Square API call when Supabase is connected
+    setTimeout(() => {
+      setIsLoading(false);
+    }, 2000);
+  };
+
   return (
     <div className="space-y-6">
+      {/* Location Selector */}
+      <LocationSelector
+        locations={[]}
+        selectedLocation={selectedLocation}
+        onLocationSelect={handleLocationSelect}
+      />
+
+      {/* Sync Button */}
+      {selectedLocation && (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold">Square POS Integration</h3>
+                <p className="text-sm text-muted-foreground">
+                  Sync inventory data from {selectedLocation.name}
+                </p>
+              </div>
+              <Button
+                onClick={handleSyncSquareData}
+                disabled={isLoading || selectedLocation.status !== 'active'}
+                className="flex items-center gap-2"
+              >
+                <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+                {isLoading ? 'Syncing...' : 'Sync Now'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
