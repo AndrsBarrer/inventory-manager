@@ -166,10 +166,16 @@ export const InventoryDashboard: React.FC = () => {
   };
 
   const handleSalesDataUpload = (data: SalesRecord[]) => {
+    console.log('=== SALES DATA UPLOADED ===');
+    console.log('Sales data received:', data);
+    console.log('Sales data length:', data.length);
     setSalesData(data);
   };
 
   const handleInventoryDataUpload = (data: InventoryRecord[]) => {
+    console.log('=== INVENTORY DATA UPLOADED ===');
+    console.log('Inventory data received:', data);
+    console.log('Inventory data length:', data.length);
     setInventoryData(data);
   };
 
