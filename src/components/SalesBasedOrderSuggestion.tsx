@@ -104,6 +104,12 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
   };
 
   const categoryOrders = useMemo(() => {
+    console.log('SalesBasedOrderSuggestion - Debug Info:');
+    console.log('Sales data length:', salesData.length);
+    console.log('Inventory data length:', inventoryData.length);
+    console.log('Sales data:', salesData);
+    console.log('Inventory data:', inventoryData);
+
     if (!salesData.length || !inventoryData.length) return [];
 
     // Calculate average daily sales for each item
