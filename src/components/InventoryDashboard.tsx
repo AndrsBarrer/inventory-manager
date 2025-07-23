@@ -7,7 +7,7 @@ import { ProductList } from './ProductList';
 import { ReorderDialog } from './ReorderDialog';
 import { LocationSelector, Location } from './LocationSelector';
 import { CSVUploader } from './CSVUploader';
-import { StockConfiguration, StockRule } from './StockConfiguration';
+
 import { SalesBasedOrderSuggestion, CategoryOrder } from './SalesBasedOrderSuggestion';
 
 export interface Product {
@@ -115,13 +115,18 @@ export const InventoryDashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [salesData, setSalesData] = useState<SalesRecord[]>([]);
   const [inventoryData, setInventoryData] = useState<InventoryRecord[]>([]);
-  const [stockRules, setStockRules] = useState<StockRule[]>([]);
+  
 
   const totalItems = inventoryData.length;
   const totalValue = inventoryData.reduce((sum, item) => sum + (item.currentStock * 25), 0); // Placeholder pricing
   const lowStockItems = inventoryData.filter(item => {
-    const rule = stockRules.find(r => r.itemName === item.itemName);
-    return rule ? item.currentStock <= rule.minimumStock : false;
+    // Use same predefined logic as in SalesBasedOrderSuggestion
+    const stockRules: Record<string, number> = {
+      'Marlboro Lights': 100, // 10 cartons = 100 units
+      // Add more predefined rules here as needed
+    };
+    const minimumStock = stockRules[item.itemName] || 0;
+    return item.currentStock <= minimumStock;
   });
 
   const handleLocationSelect = (location: Location) => {
@@ -146,9 +151,6 @@ export const InventoryDashboard: React.FC = () => {
     setInventoryData(data);
   };
 
-  const handleUpdateStockRules = (rules: StockRule[]) => {
-    setStockRules(rules);
-  };
 
   const handleGenerateOrders = (categoryOrders: CategoryOrder[]) => {
     // TODO: Implement order generation (could send to email, print, or save to database)
@@ -198,12 +200,6 @@ export const InventoryDashboard: React.FC = () => {
         onInventoryDataUpload={handleInventoryDataUpload}
       />
 
-      {/* Stock Configuration */}
-      <StockConfiguration
-        stockRules={stockRules}
-        onUpdateStockRules={handleUpdateStockRules}
-        inventoryItems={inventoryData.map(item => item.itemName)}
-      />
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -252,7 +248,6 @@ export const InventoryDashboard: React.FC = () => {
       <SalesBasedOrderSuggestion
         salesData={salesData}
         inventoryData={inventoryData}
-        stockRules={stockRules}
         onGenerateOrders={handleGenerateOrders}
       />
 

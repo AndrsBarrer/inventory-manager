@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ShoppingCart, TrendingUp, Package } from 'lucide-react';
-import { StockRule } from './StockConfiguration';
+
 
 interface SalesRecord {
   datetime: string;
@@ -37,16 +37,23 @@ interface OrderItem {
 interface SalesBasedOrderSuggestionProps {
   salesData: SalesRecord[];
   inventoryData: InventoryRecord[];
-  stockRules: StockRule[];
   onGenerateOrders: (orders: CategoryOrder[]) => void;
 }
 
 export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps> = ({
   salesData,
   inventoryData,
-  stockRules,
   onGenerateOrders
 }) => {
+  // Predefined stock rules - business logic
+  const getMinimumStock = (itemName: string): { minimumStock: number; daysOfSupply: number } => {
+    const stockRules: Record<string, { minimumStock: number; daysOfSupply: number }> = {
+      'Marlboro Lights': { minimumStock: 100, daysOfSupply: 14 }, // 10 cartons = 100 units
+      // Add more predefined rules here as needed
+    };
+    
+    return stockRules[itemName] || { minimumStock: 0, daysOfSupply: 7 };
+  };
   const categoryOrders = useMemo(() => {
     if (!salesData.length || !inventoryData.length) return [];
 
@@ -65,10 +72,10 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
       const totalSales = sales.reduce((sum, qty) => sum + qty, 0);
       const avgDailySales = sales.length > 0 ? totalSales / 14 : 0; // 2 weeks = 14 days
       
-      // Find stock rule for this item
-      const stockRule = stockRules.find(rule => rule.itemName === item.itemName);
-      const minimumStock = stockRule?.minimumStock || Math.ceil(avgDailySales * 7); // Default to 7 days supply
-      const daysOfSupply = stockRule?.daysOfSupply || 7;
+      // Get predefined stock rule for this item
+      const stockRule = getMinimumStock(item.itemName);
+      const minimumStock = stockRule.minimumStock || Math.ceil(avgDailySales * 7); // Default to 7 days supply
+      const daysOfSupply = stockRule.daysOfSupply;
       
       // Calculate days until stockout
       const daysUntilStockout = avgDailySales > 0 ? Math.floor(item.currentStock / avgDailySales) : 999;
@@ -115,7 +122,7 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
         totalCost: items.reduce((sum, item) => sum + item.estimatedCost, 0),
         totalItems: items.length
       }));
-  }, [salesData, inventoryData, stockRules]);
+  }, [salesData, inventoryData]);
 
   const getEstimatedCost = (itemName: string, category: string): number => {
     // Placeholder pricing logic - you'd want to add real pricing data
