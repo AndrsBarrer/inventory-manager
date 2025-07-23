@@ -17,6 +17,7 @@ export interface Product {
   unitCost: number;
   supplier: string;
   lastRestocked: string;
+  unitsPerCase: number;
 }
 
 const mockProducts: Product[] = [
@@ -29,7 +30,8 @@ const mockProducts: Product[] = [
     maxStock: 50,
     unitCost: 24.99,
     supplier: 'Premium Wine Co.',
-    lastRestocked: '2024-01-15'
+    lastRestocked: '2024-01-15',
+    unitsPerCase: 12
   },
   {
     id: '2',
@@ -40,7 +42,8 @@ const mockProducts: Product[] = [
     maxStock: 30,
     unitCost: 45.00,
     supplier: 'Local Brewery',
-    lastRestocked: '2024-01-10'
+    lastRestocked: '2024-01-10',
+    unitsPerCase: 24
   },
   {
     id: '3',
@@ -51,7 +54,8 @@ const mockProducts: Product[] = [
     maxStock: 40,
     unitCost: 35.50,
     supplier: 'Spirits Direct',
-    lastRestocked: '2024-01-20'
+    lastRestocked: '2024-01-20',
+    unitsPerCase: 6
   },
   {
     id: '4',
@@ -62,7 +66,8 @@ const mockProducts: Product[] = [
     maxStock: 60,
     unitCost: 12.99,
     supplier: 'Beverage Supply Co.',
-    lastRestocked: '2024-01-18'
+    lastRestocked: '2024-01-18',
+    unitsPerCase: 4
   }
 ];
 
