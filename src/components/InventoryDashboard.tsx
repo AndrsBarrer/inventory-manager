@@ -81,6 +81,18 @@ const mockProducts: Product[] = [
     supplier: 'Giant Wholesale (Cigarettes)',
     lastRestocked: '2024-01-12',
     unitsPerCase: 10
+  },
+  {
+    id: '6',
+    name: 'Crown Royal Whiskey',
+    category: 'spirits',
+    currentStock: 4,
+    reorderPoint: 8,
+    maxStock: 24,
+    unitCost: 42.00,
+    supplier: 'Harbor',
+    lastRestocked: '2024-01-14',
+    unitsPerCase: 6
   }
 ];
 
