@@ -126,28 +126,47 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
       
       // Get predefined stock rule for this item
       const stockRule = getMinimumStock(item.itemName);
-      const minimumStock = stockRule.minimumStock || Math.ceil(avgDailySales * 7); // Default to 7 days supply
+      
+      // Calculate minimum stock - ensure out of stock items get a minimum order
+      let minimumStock = stockRule.minimumStock;
+      if (!minimumStock) {
+        if (avgDailySales > 0) {
+          minimumStock = Math.ceil(avgDailySales * 7); // 7 days supply based on sales
+        } else if (item.currentStock === 0) {
+          // For out-of-stock items with no sales history, set a reasonable minimum
+          minimumStock = item.category === 'cigarettes' ? 100 : 
+                        item.category === 'beer' ? 24 : 12; 
+        } else {
+          minimumStock = 0; // Items with stock but no sales history
+        }
+      }
+      
       const daysOfSupply = stockRule.daysOfSupply;
       
       // Calculate days until stockout
-      const daysUntilStockout = avgDailySales > 0 ? Math.floor(item.currentStock / avgDailySales) : 999;
+      const daysUntilStockout = avgDailySales > 0 ? Math.floor(item.currentStock / avgDailySales) : 
+                                item.currentStock === 0 ? 0 : 999;
       
       // Calculate suggested order quantity (in units)
       const targetStock = Math.max(minimumStock, Math.ceil(avgDailySales * daysOfSupply));
       const suggestedOrder = Math.max(0, targetStock - item.currentStock);
       
+      // Special handling: if item is out of stock, ensure we order at least the minimum
+      const finalSuggestedOrder = item.currentStock === 0 ? 
+        Math.max(suggestedOrder, minimumStock) : suggestedOrder;
+      
       // Convert to cases (round up to nearest case)
-      const suggestedCases = Math.ceil(suggestedOrder / unitsPerCase);
+      const suggestedCases = Math.ceil(finalSuggestedOrder / unitsPerCase);
       
       // Estimate cost (placeholder - you'd need actual pricing data)
       const estimatedUnitCost = getEstimatedCost(item.itemName, item.category);
-      const estimatedCost = suggestedOrder * estimatedUnitCost;
+      const estimatedCost = finalSuggestedOrder * estimatedUnitCost;
 
       return {
         itemName: item.itemName,
         currentStock: item.currentStock,
         avgDailySales,
-        suggestedOrder,
+        suggestedOrder: finalSuggestedOrder,
         suggestedCases,
         unitsPerCase,
         daysUntilStockout,
