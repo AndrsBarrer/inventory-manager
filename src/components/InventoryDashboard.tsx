@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { AlertTriangle, Package, ShoppingCart, TrendingDown, RefreshCw } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { AlertTriangle, Package, ShoppingCart, TrendingDown, RefreshCw, Search } from 'lucide-react';
 import { ProductList } from './ProductList';
 import { ReorderDialog } from './ReorderDialog';
 import { LocationSelector, Location } from './LocationSelector';
@@ -117,6 +118,7 @@ export const InventoryDashboard: React.FC = () => {
   const [inventoryData, setInventoryData] = useState<InventoryRecord[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isReorderDialogOpen, setIsReorderDialogOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Convert uploaded inventory data to Product format for display
   const convertedProducts: Product[] = inventoryData.map((item, index) => ({
@@ -131,6 +133,11 @@ export const InventoryDashboard: React.FC = () => {
     lastRestocked: '2024-01-15',
     unitsPerCase: item.category === 'cigarettes' ? 10 : 6
   }));
+
+  // Filter products based on search query
+  const filteredProducts = convertedProducts.filter(product =>
+    product.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   const totalItems = inventoryData.length;
   const totalValue = inventoryData.reduce((sum, item) => sum + (item.currentStock * 25), 0); // Placeholder pricing
@@ -263,10 +270,35 @@ export const InventoryDashboard: React.FC = () => {
         </Card>
       </div>
 
+      {/* Inventory Search */}
+      {convertedProducts.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Search Inventory</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+              <Input
+                placeholder="Search inventory items..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            {searchQuery && (
+              <p className="text-sm text-muted-foreground mt-2">
+                Showing {filteredProducts.length} of {convertedProducts.length} items
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Current Inventory Display */}
       {convertedProducts.length > 0 && (
         <ProductList
-          products={convertedProducts}
+          products={filteredProducts}
           onReorder={handleReorder}
         />
       )}
