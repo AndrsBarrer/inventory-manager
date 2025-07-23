@@ -120,7 +120,11 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
     orderItems.forEach(item => {
       const inventoryItem = inventoryData.find(inv => inv.itemName === item.itemName);
       if (inventoryItem) {
-        categories[inventoryItem.category].push(item);
+        const validCategory = inventoryItem.category;
+        // Ensure the category exists in our categories object
+        if (categories[validCategory]) {
+          categories[validCategory].push(item);
+        }
       }
     });
 
@@ -206,8 +210,8 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {categoryOrder.items.map(item => (
-                    <div key={item.itemName} className="flex items-center justify-between p-3 bg-card rounded-md border">
+                  {categoryOrder.items.map((item, index) => (
+                    <div key={`${item.itemName}-${index}`} className="flex items-center justify-between p-3 bg-card rounded-md border">
                       <div className="flex-1">
                         <div className="font-medium">{item.itemName}</div>
                         <div className="text-sm text-muted-foreground">
