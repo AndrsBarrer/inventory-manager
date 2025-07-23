@@ -103,8 +103,8 @@ export const CSVUploader: React.FC<CSVUploaderProps> = ({
         .filter(row => row.length >= 3)
         .map(row => ({
           itemName: row[0],
-          currentStock: parseInt(row[1]) || 0,
-          category: (row[2]?.toLowerCase() as 'beer' | 'wine' | 'cigarettes') || 'beer'
+          category: (row[1]?.toLowerCase() as 'beer' | 'wine' | 'cigarettes') || 'beer',
+          currentStock: parseInt(row[2]) || 0
         }));
 
       onInventoryDataUpload(inventoryData);
@@ -182,7 +182,7 @@ export const CSVUploader: React.FC<CSVUploaderProps> = ({
           <div className="text-sm text-muted-foreground">
             <p>Expected format:</p>
             <p className="font-mono text-xs bg-muted p-2 rounded">
-              Item Name, Current Stock, Category
+              Item Name, Categories, Current Quantity
             </p>
           </div>
           
