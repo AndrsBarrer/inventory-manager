@@ -6,7 +6,9 @@ import { AlertTriangle, Package, ShoppingCart, TrendingDown, RefreshCw } from 'l
 import { ProductList } from './ProductList';
 import { ReorderDialog } from './ReorderDialog';
 import { LocationSelector, Location } from './LocationSelector';
-import { OrderSuggestion, VendorOrder } from './OrderSuggestion';
+import { CSVUploader } from './CSVUploader';
+import { StockConfiguration, StockRule } from './StockConfiguration';
+import { SalesBasedOrderSuggestion, CategoryOrder } from './SalesBasedOrderSuggestion';
 
 export interface Product {
   id: string;
@@ -96,21 +98,31 @@ const mockProducts: Product[] = [
   }
 ];
 
+interface SalesRecord {
+  datetime: string;
+  itemName: string;
+  quantitySold: number;
+}
+
+interface InventoryRecord {
+  itemName: string;
+  currentStock: number;
+  category: 'beer' | 'wine' | 'cigarettes';
+}
+
 export const InventoryDashboard: React.FC = () => {
-  const [products] = useState<Product[]>(mockProducts);
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [showReorderDialog, setShowReorderDialog] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [salesData, setSalesData] = useState<SalesRecord[]>([]);
+  const [inventoryData, setInventoryData] = useState<InventoryRecord[]>([]);
+  const [stockRules, setStockRules] = useState<StockRule[]>([]);
 
-  const lowStockProducts = products.filter(p => p.currentStock <= p.reorderPoint);
-  const totalValue = products.reduce((sum, p) => sum + (p.currentStock * p.unitCost), 0);
-  const outOfStockProducts = products.filter(p => p.currentStock === 0);
-
-  const handleReorder = (product: Product) => {
-    setSelectedProduct(product);
-    setShowReorderDialog(true);
-  };
+  const totalItems = inventoryData.length;
+  const totalValue = inventoryData.reduce((sum, item) => sum + (item.currentStock * 25), 0); // Placeholder pricing
+  const lowStockItems = inventoryData.filter(item => {
+    const rule = stockRules.find(r => r.itemName === item.itemName);
+    return rule ? item.currentStock <= rule.minimumStock : false;
+  });
 
   const handleLocationSelect = (location: Location) => {
     setSelectedLocation(location);
@@ -126,12 +138,26 @@ export const InventoryDashboard: React.FC = () => {
     }, 2000);
   };
 
-  const handleGenerateOrders = (vendorOrders: VendorOrder[]) => {
-    // TODO: Implement order generation (could send to email, print, or save to database)
-    console.log('Generated orders:', vendorOrders);
-    // For now, just show a simple alert
-    alert(`Generated ${vendorOrders.length} order(s) totaling $${vendorOrders.reduce((sum, order) => sum + order.totalCost, 0).toFixed(2)}`);
+  const handleSalesDataUpload = (data: SalesRecord[]) => {
+    setSalesData(data);
   };
+
+  const handleInventoryDataUpload = (data: InventoryRecord[]) => {
+    setInventoryData(data);
+  };
+
+  const handleUpdateStockRules = (rules: StockRule[]) => {
+    setStockRules(rules);
+  };
+
+  const handleGenerateOrders = (categoryOrders: CategoryOrder[]) => {
+    // TODO: Implement order generation (could send to email, print, or save to database)
+    console.log('Generated orders:', categoryOrders);
+    const totalCost = categoryOrders.reduce((sum, order) => sum + order.totalCost, 0);
+    alert(`Generated ${categoryOrders.length} category order(s) totaling $${totalCost.toFixed(2)}`);
+  };
+
+  const outOfStockItems = inventoryData.filter(item => item.currentStock === 0);
 
   return (
     <div className="space-y-6">
@@ -166,6 +192,19 @@ export const InventoryDashboard: React.FC = () => {
         </Card>
       )}
 
+      {/* CSV Upload Section */}
+      <CSVUploader
+        onSalesDataUpload={handleSalesDataUpload}
+        onInventoryDataUpload={handleInventoryDataUpload}
+      />
+
+      {/* Stock Configuration */}
+      <StockConfiguration
+        stockRules={stockRules}
+        onUpdateStockRules={handleUpdateStockRules}
+        inventoryItems={inventoryData.map(item => item.itemName)}
+      />
+
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
@@ -174,7 +213,7 @@ export const InventoryDashboard: React.FC = () => {
             <Package className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{products.length}</div>
+            <div className="text-2xl font-bold">{totalItems}</div>
           </CardContent>
         </Card>
         
@@ -184,7 +223,7 @@ export const InventoryDashboard: React.FC = () => {
             <AlertTriangle className="h-4 w-4 text-warning" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-warning">{lowStockProducts.length}</div>
+            <div className="text-2xl font-bold text-warning">{lowStockItems.length}</div>
           </CardContent>
         </Card>
 
@@ -194,7 +233,7 @@ export const InventoryDashboard: React.FC = () => {
             <TrendingDown className="h-4 w-4 text-destructive" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-destructive">{outOfStockProducts.length}</div>
+            <div className="text-2xl font-bold text-destructive">{outOfStockItems.length}</div>
           </CardContent>
         </Card>
 
@@ -209,14 +248,16 @@ export const InventoryDashboard: React.FC = () => {
         </Card>
       </div>
 
-      {/* Order Suggestions */}
-      <OrderSuggestion 
-        products={products} 
-        onGenerateOrder={handleGenerateOrders}
+      {/* Sales-Based Order Suggestions */}
+      <SalesBasedOrderSuggestion
+        salesData={salesData}
+        inventoryData={inventoryData}
+        stockRules={stockRules}
+        onGenerateOrders={handleGenerateOrders}
       />
 
       {/* Low Stock Alert */}
-      {lowStockProducts.length > 0 && (
+      {lowStockItems.length > 0 && (
         <Card className="border-warning bg-warning/5">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-warning">
@@ -226,25 +267,18 @@ export const InventoryDashboard: React.FC = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {lowStockProducts.map(product => (
-                <div key={product.id} className="flex items-center justify-between p-2 bg-card rounded-md">
+              {lowStockItems.map(item => (
+                <div key={item.itemName} className="flex items-center justify-between p-2 bg-card rounded-md">
                   <div>
-                    <span className="font-medium">{product.name}</span>
+                    <span className="font-medium">{item.itemName}</span>
                     <Badge variant="outline" className="ml-2 capitalize">
-                      {product.category}
+                      {item.category}
                     </Badge>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-sm text-muted-foreground">
-                      Stock: {product.currentStock} / Reorder at: {product.reorderPoint}
+                      Current Stock: {item.currentStock}
                     </span>
-                    <Button 
-                      size="sm" 
-                      onClick={() => handleReorder(product)}
-                      className="bg-accent hover:bg-accent/90"
-                    >
-                      Reorder
-                    </Button>
                   </div>
                 </div>
               ))}
@@ -252,20 +286,6 @@ export const InventoryDashboard: React.FC = () => {
           </CardContent>
         </Card>
       )}
-
-      {/* Product List */}
-      <ProductList products={products} onReorder={handleReorder} />
-
-      {/* Reorder Dialog */}
-      <ReorderDialog
-        product={selectedProduct}
-        open={showReorderDialog}
-        onOpenChange={setShowReorderDialog}
-        onConfirm={() => {
-          setShowReorderDialog(false);
-          setSelectedProduct(null);
-        }}
-      />
     </div>
   );
 };
