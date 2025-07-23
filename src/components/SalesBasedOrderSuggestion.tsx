@@ -54,6 +54,17 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
     
     return stockRules[itemName] || { minimumStock: 0, daysOfSupply: 7 };
   };
+
+  const getEstimatedCost = (itemName: string, category: string): number => {
+    // Placeholder pricing logic - you'd want to add real pricing data
+    const basePrices = {
+      beer: 45,
+      wine: 25,
+      cigarettes: 85
+    };
+    return basePrices[category as keyof typeof basePrices] || 25;
+  };
+
   const categoryOrders = useMemo(() => {
     if (!salesData.length || !inventoryData.length) return [];
 
@@ -124,15 +135,6 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
       }));
   }, [salesData, inventoryData]);
 
-  const getEstimatedCost = (itemName: string, category: string): number => {
-    // Placeholder pricing logic - you'd want to add real pricing data
-    const basePrices = {
-      beer: 45,
-      wine: 25,
-      cigarettes: 85
-    };
-    return basePrices[category as keyof typeof basePrices] || 25;
-  };
 
   const totalOrderValue = categoryOrders.reduce((sum, order) => sum + order.totalCost, 0);
 
