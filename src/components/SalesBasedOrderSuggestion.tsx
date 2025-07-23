@@ -84,13 +84,22 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
   };
 
   // Predefined stock rules - business logic
-  const getMinimumStock = (itemName: string): { minimumStock: number; daysOfSupply: number } => {
+  const getMinimumStock = (itemName: string, avgDailySales: number): { minimumStock: number; daysOfSupply: number } => {
     const stockRules: Record<string, { minimumStock: number; daysOfSupply: number }> = {
       'Marlboro Lights': { minimumStock: 100, daysOfSupply: 14 }, // 10 cartons = 100 units
       // Add more predefined rules here as needed
     };
     
-    return stockRules[itemName] || { minimumStock: 0, daysOfSupply: 7 };
+    // High selling products (4-5 bottles per week = ~0.57-0.71 per day) should have minimum 4 units
+    const weeklyAverage = avgDailySales * 7;
+    const isHighSellingProduct = weeklyAverage >= 4;
+    
+    const defaultRule = stockRules[itemName] || { 
+      minimumStock: isHighSellingProduct ? 4 : 0, 
+      daysOfSupply: 7 
+    };
+    
+    return defaultRule;
   };
 
   const getEstimatedCost = (itemName: string, category: string): number => {
@@ -145,7 +154,7 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
       const unitsPerCase = getUnitsPerCase(item.itemName, item.category);
       
       // Get predefined stock rule for this item
-      const stockRule = getMinimumStock(item.itemName);
+      const stockRule = getMinimumStock(item.itemName, avgDailySales);
       
       // Calculate minimum stock - ensure out of stock items get a minimum order
       let minimumStock = stockRule.minimumStock;
