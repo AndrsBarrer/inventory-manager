@@ -14,11 +14,11 @@ interface SalesRecord {
 interface InventoryRecord {
   itemName: string;
   currentStock: number;
-  category: 'beer' | 'wine' | 'cigarettes';
+  category: 'beer' | 'wine' | 'cigarettes' | 'spirits' | 'mixers' | 'tobacco' | 'cigarette' | 'liquor' | 'alcohol';
 }
 
 export interface CategoryOrder {
-  category: 'beer' | 'wine' | 'cigarettes';
+  category: 'beer' | 'wine' | 'cigarettes' | 'spirits' | 'mixers';
   items: OrderItem[];
   totalCost: number;
   totalItems: number;
@@ -186,20 +186,38 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
 
     const filteredOrderItems = orderItems.filter(item => item.suggestedOrder > 0);
 
-    // Group by category
+    // Group by category with flexible category mapping
     const categories: Record<string, OrderItem[]> = {
       beer: [],
       wine: [],
-      cigarettes: []
+      cigarettes: [],
+      spirits: [], // Add spirits category
+      mixers: []   // Add mixers category
     };
 
+    console.log('=== CATEGORY GROUPING DEBUG ===');
+    
     filteredOrderItems.forEach(item => {
       const inventoryItem = inventoryData.find(inv => inv.itemName === item.itemName);
       if (inventoryItem) {
-        const validCategory = inventoryItem.category;
-        // Ensure the category exists in our categories object
+        let validCategory = inventoryItem.category.toLowerCase();
+        
+        // Map different category names to our standard categories
+        if (validCategory === 'tobacco' || validCategory === 'cigarette') {
+          validCategory = 'cigarettes';
+        }
+        if (validCategory === 'liquor' || validCategory === 'alcohol') {
+          validCategory = 'spirits';
+        }
+        
+        console.log(`Item: ${item.itemName}, Original Category: ${inventoryItem.category}, Mapped Category: ${validCategory}`);
+        
+        // Ensure the category exists in our categories object, or use 'spirits' as default
         if (categories[validCategory]) {
           categories[validCategory].push(item);
+        } else {
+          console.log(`Unknown category "${validCategory}" for ${item.itemName}, adding to spirits`);
+          categories['spirits'].push(item);
         }
       }
     });
@@ -208,7 +226,7 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
     return Object.entries(categories)
       .filter(([_, items]) => items.length > 0)
       .map(([category, items]) => ({
-        category: category as 'beer' | 'wine' | 'cigarettes',
+        category: category as 'beer' | 'wine' | 'cigarettes' | 'spirits' | 'mixers',
         items,
         totalCost: items.reduce((sum, item) => sum + item.estimatedCost, 0),
         totalItems: items.length
