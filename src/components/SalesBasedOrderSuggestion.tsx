@@ -215,6 +215,8 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
       }));
   }, [salesData, inventoryData]);
 
+  console.log('Final category orders:', categoryOrders);
+  console.log('Category orders length:', categoryOrders.length);
 
   const totalOrderValue = categoryOrders.reduce((sum, order) => sum + order.totalCost, 0);
 
@@ -223,6 +225,7 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
   };
 
   if (categoryOrders.length === 0) {
+    console.log('Showing NO ORDERS message - this means no items need ordering');
     return (
       <Card>
         <CardHeader>
