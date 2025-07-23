@@ -6,6 +6,7 @@ import { AlertTriangle, Package, ShoppingCart, TrendingDown, RefreshCw } from 'l
 import { ProductList } from './ProductList';
 import { ReorderDialog } from './ReorderDialog';
 import { LocationSelector, Location } from './LocationSelector';
+import { OrderSuggestion, VendorOrder } from './OrderSuggestion';
 
 export interface Product {
   id: string;
@@ -29,7 +30,7 @@ const mockProducts: Product[] = [
     reorderPoint: 15,
     maxStock: 50,
     unitCost: 24.99,
-    supplier: 'Premium Wine Co.',
+    supplier: 'Southern Wine and Spirits',
     lastRestocked: '2024-01-15',
     unitsPerCase: 12
   },
@@ -41,7 +42,7 @@ const mockProducts: Product[] = [
     reorderPoint: 10,
     maxStock: 30,
     unitCost: 45.00,
-    supplier: 'Local Brewery',
+    supplier: 'Breakthru Beverages',
     lastRestocked: '2024-01-10',
     unitsPerCase: 24
   },
@@ -53,7 +54,7 @@ const mockProducts: Product[] = [
     reorderPoint: 12,
     maxStock: 40,
     unitCost: 35.50,
-    supplier: 'Spirits Direct',
+    supplier: 'Harbor',
     lastRestocked: '2024-01-20',
     unitsPerCase: 6
   },
@@ -65,9 +66,21 @@ const mockProducts: Product[] = [
     reorderPoint: 20,
     maxStock: 60,
     unitCost: 12.99,
-    supplier: 'Beverage Supply Co.',
+    supplier: 'Southern Wine and Spirits',
     lastRestocked: '2024-01-18',
     unitsPerCase: 4
+  },
+  {
+    id: '5',
+    name: 'Marlboro Gold Pack',
+    category: 'spirits',
+    currentStock: 2,
+    reorderPoint: 10,
+    maxStock: 50,
+    unitCost: 85.00,
+    supplier: 'Giant Wholesale (Cigarettes)',
+    lastRestocked: '2024-01-12',
+    unitsPerCase: 10
   }
 ];
 
@@ -99,6 +112,13 @@ export const InventoryDashboard: React.FC = () => {
     setTimeout(() => {
       setIsLoading(false);
     }, 2000);
+  };
+
+  const handleGenerateOrders = (vendorOrders: VendorOrder[]) => {
+    // TODO: Implement order generation (could send to email, print, or save to database)
+    console.log('Generated orders:', vendorOrders);
+    // For now, just show a simple alert
+    alert(`Generated ${vendorOrders.length} order(s) totaling $${vendorOrders.reduce((sum, order) => sum + order.totalCost, 0).toFixed(2)}`);
   };
 
   return (
@@ -176,6 +196,12 @@ export const InventoryDashboard: React.FC = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Order Suggestions */}
+      <OrderSuggestion 
+        products={products} 
+        onGenerateOrder={handleGenerateOrders}
+      />
 
       {/* Low Stock Alert */}
       {lowStockProducts.length > 0 && (
