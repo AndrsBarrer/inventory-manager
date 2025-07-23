@@ -121,11 +121,25 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
       return acc;
     }, {} as Record<string, number[]>);
 
+    // Calculate the actual date range from sales data
+    const salesDates = salesData.map(record => new Date(record.datetime));
+    const minDate = new Date(Math.min(...salesDates.map(d => d.getTime())));
+    const maxDate = new Date(Math.max(...salesDates.map(d => d.getTime())));
+    const actualDays = Math.max(1, Math.ceil((maxDate.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+    
+    console.log('=== SALES PERIOD DEBUG ===');
+    console.log('Min date:', minDate.toDateString());
+    console.log('Max date:', maxDate.toDateString());
+    console.log('Actual days in sales data:', actualDays);
+    console.log('Total sales records:', salesData.length);
+
     // Calculate order suggestions for each inventory item
     const orderItems: OrderItem[] = inventoryData.map(item => {
       const sales = salesByItem[item.itemName] || [];
       const totalSales = sales.reduce((sum, qty) => sum + qty, 0);
-      const avgDailySales = sales.length > 0 ? totalSales / 14 : 0; // 2 weeks = 14 days
+      const avgDailySales = sales.length > 0 ? totalSales / actualDays : 0; // Use actual days from sales data
+      
+      console.log(`Item: ${item.itemName}, Total Sales: ${totalSales}, Days: ${actualDays}, Daily Average: ${avgDailySales.toFixed(2)}`);
       
       // Get units per case for this item
       const unitsPerCase = getUnitsPerCase(item.itemName, item.category);
