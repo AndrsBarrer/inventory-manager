@@ -179,7 +179,12 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
         minimumStock,
         estimatedCost
       };
-    }).filter(item => item.suggestedOrder > 0); // Only items that need ordering
+    });
+
+    console.log('All calculated order items (before filtering):', orderItems);
+    console.log('Items that need ordering (after filtering):', orderItems.filter(item => item.suggestedOrder > 0));
+
+    const filteredOrderItems = orderItems.filter(item => item.suggestedOrder > 0);
 
     // Group by category
     const categories: Record<string, OrderItem[]> = {
@@ -188,7 +193,7 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
       cigarettes: []
     };
 
-    orderItems.forEach(item => {
+    filteredOrderItems.forEach(item => {
       const inventoryItem = inventoryData.find(inv => inv.itemName === item.itemName);
       if (inventoryItem) {
         const validCategory = inventoryItem.category;
