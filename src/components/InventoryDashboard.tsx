@@ -115,7 +115,22 @@ export const InventoryDashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [salesData, setSalesData] = useState<SalesRecord[]>([]);
   const [inventoryData, setInventoryData] = useState<InventoryRecord[]>([]);
-  
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [isReorderDialogOpen, setIsReorderDialogOpen] = useState(false);
+
+  // Convert uploaded inventory data to Product format for display
+  const convertedProducts: Product[] = inventoryData.map((item, index) => ({
+    id: `uploaded-${index}`,
+    name: item.itemName,
+    category: item.category === 'cigarettes' ? 'spirits' : item.category as 'wine' | 'beer' | 'spirits',
+    currentStock: item.currentStock,
+    reorderPoint: item.category === 'cigarettes' ? 100 : 10, // Default reorder points
+    maxStock: item.category === 'cigarettes' ? 200 : 50, // Default max stock
+    unitCost: item.category === 'cigarettes' ? 85.00 : 25.00, // Default costs
+    supplier: item.category === 'cigarettes' ? 'Giant Wholesale (Cigarettes)' : 'Local Supplier',
+    lastRestocked: '2024-01-15',
+    unitsPerCase: item.category === 'cigarettes' ? 10 : 6
+  }));
 
   const totalItems = inventoryData.length;
   const totalValue = inventoryData.reduce((sum, item) => sum + (item.currentStock * 25), 0); // Placeholder pricing
@@ -151,6 +166,10 @@ export const InventoryDashboard: React.FC = () => {
     setInventoryData(data);
   };
 
+  const handleReorder = (product: Product) => {
+    setSelectedProduct(product);
+    setIsReorderDialogOpen(true);
+  };
 
   const handleGenerateOrders = (categoryOrders: CategoryOrder[]) => {
     // TODO: Implement order generation (could send to email, print, or save to database)
@@ -244,6 +263,14 @@ export const InventoryDashboard: React.FC = () => {
         </Card>
       </div>
 
+      {/* Current Inventory Display */}
+      {convertedProducts.length > 0 && (
+        <ProductList
+          products={convertedProducts}
+          onReorder={handleReorder}
+        />
+      )}
+
       {/* Sales-Based Order Suggestions */}
       <SalesBasedOrderSuggestion
         salesData={salesData}
@@ -281,6 +308,14 @@ export const InventoryDashboard: React.FC = () => {
           </CardContent>
         </Card>
       )}
+
+      {/* Reorder Dialog */}
+      <ReorderDialog
+        open={isReorderDialogOpen}
+        onOpenChange={setIsReorderDialogOpen}
+        product={selectedProduct}
+        onConfirm={() => setIsReorderDialogOpen(false)}
+      />
     </div>
   );
 };
