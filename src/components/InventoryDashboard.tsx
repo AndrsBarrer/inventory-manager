@@ -220,6 +220,13 @@ export const InventoryDashboard: React.FC = () => {
         </Card>
       )}
 
+      {/* Sales-Based Order Suggestions - Moved up per user request */}
+      <SalesBasedOrderSuggestion
+        salesData={salesData}
+        inventoryData={inventoryData}
+        onGenerateOrders={handleGenerateOrders}
+      />
+
       {/* CSV Upload Section */}
       <CSVUploader
         onSalesDataUpload={handleSalesDataUpload}
@@ -302,13 +309,6 @@ export const InventoryDashboard: React.FC = () => {
           onReorder={handleReorder}
         />
       )}
-
-      {/* Sales-Based Order Suggestions */}
-      <SalesBasedOrderSuggestion
-        salesData={salesData}
-        inventoryData={inventoryData}
-        onGenerateOrders={handleGenerateOrders}
-      />
 
       {/* Low Stock Alert */}
       {lowStockItems.length > 0 && (
