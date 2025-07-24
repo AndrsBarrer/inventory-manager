@@ -68,6 +68,18 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
     }
     const name = itemName.toLowerCase();
     
+    // Detect cigarettes by brand names
+    const cigaretteBrands = [
+      'marlboro', 'newport', 'camel', 'pall mall', 'kool', 'parliament',
+      'american spirit', 'lucky strike', 'winston', 'salem', 'doral',
+      'basic', 'virginia slims', 'misty', 'eagle 20s', 'l&m', 'merit'
+    ];
+    
+    const isCigarette = cigaretteBrands.some(brand => name.includes(brand));
+    if (isCigarette) {
+      return 10; // Cigarettes have 10 units per case
+    }
+    
     // Volume-based case sizing
     if (name.includes('50ml') || name.includes('50 ml')) {
       return 120;
