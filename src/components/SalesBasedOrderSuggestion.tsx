@@ -147,6 +147,9 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
     if (name.includes('newport')) {
       return 15.00;
     }
+    if (name.includes('american spirit')) {
+      return 11.90;
+    }
     
     // Placeholder pricing logic - you'd want to add real pricing data
     const basePrices = {
