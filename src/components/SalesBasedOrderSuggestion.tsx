@@ -49,38 +49,15 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
 }) => {
   // Get units per case based on bottle size and type
   const getUnitsPerCase = (itemName: string, category: string): number => {
-    const lowerName = itemName.toLowerCase();
+    const name = itemName.toLowerCase();
     
-    // Special cases for 375ml bottles with 24 units (you can add more here)
-    const special375mlCases: Record<string, number> = {
-      'fireball cinnamon whisky 375ml': 24,
-      'smirnoff vodka 375ml': 24,
-      // Add more items that have 24 units per case for 375ml
-    };
+    // Volume-based case sizing
+    if (name.includes('750')) return 12;
+    if (name.includes('375')) return 24;
+    if (name.includes('200')) return 24;
     
-    // Check for bottle sizes in name
-    if (lowerName.includes('750ml')) {
-      return 12; // Wine and liquor 750ml bottles
-    }
-    
-    if (lowerName.includes('375ml')) {
-      return special375mlCases[lowerName] || 12; // Default 12, special cases 24
-    }
-    
-    if (lowerName.includes('200ml')) {
-      // You can add logic here to determine if it's 24 or 48
-      // For now, default to 24, but you can customize per item
-      const special200mlCases: Record<string, number> = {
-        // Add specific 200ml items that have 48 units
-      };
-      return special200mlCases[lowerName] || 24;
-    }
-    
-    // Category defaults
-    if (category === 'cigarettes') return 10; // Cigarette cartons
-    if (category === 'beer') return 24; // Beer cases
-    
-    return 12; // Default for wine/spirits
+    // Default fallback
+    return 12;
   };
 
   // Predefined stock rules - business logic
