@@ -352,25 +352,28 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {categoryOrder.items.map((item, index) => (
-                    <div key={`${item.itemName}-${index}`} className="flex items-center justify-between p-3 bg-card rounded-md border">
-                      <div className="flex-1">
-                        <div className="font-medium">{item.itemName}</div>
-                        <div className="text-sm text-muted-foreground">
-                          Current: {item.currentStock} units | Daily Sales: {item.avgDailySales.toFixed(1)} | 
-                          Days Left: {item.daysUntilStockout} | {item.unitsPerCase} units/case
+                  {categoryOrder.items.map((item, index) => {
+                    const inventoryItem = inventoryData.find(inv => inv.itemName === item.itemName);
+                    return (
+                      <div key={`${item.itemName}-${index}`} className="flex items-center justify-between p-3 bg-card rounded-md border">
+                        <div className="flex-1">
+                          <div className="font-medium">{item.itemName}</div>
+                          <div className="text-sm text-muted-foreground">
+                            Category: {inventoryItem?.category || 'Unknown'} | Current: {item.currentStock} units | Daily Sales: {item.avgDailySales.toFixed(1)} | 
+                            Days Left: {item.daysUntilStockout} | {item.unitsPerCase} units/case
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-medium text-primary">
+                            Order: {item.suggestedCases} cases ({item.suggestedCases * item.unitsPerCase} units)
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            ${item.estimatedCost.toFixed(2)}
+                          </div>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <div className="font-medium text-primary">
-                          Order: {item.suggestedCases} cases ({item.suggestedCases * item.unitsPerCase} units)
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          ${item.estimatedCost.toFixed(2)}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </CardContent>
             </Card>
