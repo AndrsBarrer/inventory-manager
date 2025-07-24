@@ -92,6 +92,11 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
       return 8; // Backwood 5 Pks have 8 units per case
     }
     
+    // Detect Grabba Leaf Small (25 units per case)
+    if (name.includes('grabba leaf') && name.includes('small')) {
+      return 25; // Grabba Leaf Small has 25 units per case
+    }
+    
     // Volume-based case sizing
     if (name.includes('50ml') || name.includes('50 ml')) {
       return 120;
