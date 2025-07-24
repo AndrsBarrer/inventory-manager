@@ -297,7 +297,7 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
         totalCost: items.reduce((sum, item) => sum + item.estimatedCost, 0),
         totalItems: items.length
       }));
-  }, [salesData, inventoryData]);
+  }, [salesData, inventoryData, unitsPerCaseOverrides]);
 
   console.log('Final category orders:', categoryOrders);
   console.log('Category orders length:', categoryOrders.length);
