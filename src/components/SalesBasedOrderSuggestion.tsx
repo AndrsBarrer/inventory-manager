@@ -2,7 +2,8 @@ import React, { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ShoppingCart, TrendingUp, Package } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { ShoppingCart, TrendingUp, Package, Edit } from 'lucide-react';
 
 
 interface SalesRecord {
@@ -47,8 +48,24 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
   inventoryData,
   onGenerateOrders
 }) => {
+  // Store units per case overrides in localStorage
+  const [unitsPerCaseOverrides, setUnitsPerCaseOverrides] = React.useState<Record<string, number>>(() => {
+    const stored = localStorage.getItem('unitsPerCaseOverrides');
+    return stored ? JSON.parse(stored) : {};
+  });
+
+  const updateUnitsPerCase = (itemName: string, units: number) => {
+    const newOverrides = { ...unitsPerCaseOverrides, [itemName]: units };
+    setUnitsPerCaseOverrides(newOverrides);
+    localStorage.setItem('unitsPerCaseOverrides', JSON.stringify(newOverrides));
+  };
+
   // Get units per case based on bottle size and type
   const getUnitsPerCase = (itemName: string, category: string): number => {
+    // Check for manual overrides first
+    if (unitsPerCaseOverrides[itemName]) {
+      return unitsPerCaseOverrides[itemName];
+    }
     const name = itemName.toLowerCase();
     
     // Volume-based case sizing
@@ -333,9 +350,27 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
                       <div key={`${item.itemName}-${index}`} className="flex items-center justify-between p-3 bg-card rounded-md border">
                         <div className="flex-1">
                           <div className="font-medium">{item.itemName}</div>
-                          <div className="text-sm text-muted-foreground">
-                            Category: {inventoryItem?.category || 'Unknown'} | Current: {item.currentStock} units | Daily Sales: {item.avgDailySales.toFixed(1)} | 
-                            Days Left: {item.daysUntilStockout} | {item.unitsPerCase} units/case
+                          <div className="text-sm text-muted-foreground flex items-center gap-4 flex-wrap">
+                            <span>Category: {inventoryItem?.category || 'Unknown'}</span>
+                            <span>Current: {item.currentStock} units</span>
+                            <span>Daily Sales: {item.avgDailySales.toFixed(1)}</span>
+                            <span>Days Left: {item.daysUntilStockout}</span>
+                            <div className="flex items-center gap-1">
+                              <Input
+                                type="number"
+                                value={item.unitsPerCase}
+                                onChange={(e) => {
+                                  const newValue = parseInt(e.target.value) || item.unitsPerCase;
+                                  updateUnitsPerCase(item.itemName, newValue);
+                                }}
+                                className="w-16 h-6 text-xs"
+                                min="1"
+                              />
+                              <span>units/case</span>
+                              {unitsPerCaseOverrides[item.itemName] && (
+                                <Badge variant="secondary" className="text-xs">Custom</Badge>
+                              )}
+                            </div>
                           </div>
                         </div>
                         <div className="text-right">
