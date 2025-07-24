@@ -148,6 +148,20 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
       const totalSales = sales.reduce((sum, qty) => sum + qty, 0);
       const avgDailySales = sales.length > 0 ? totalSales / actualDays : 0; // Use actual days from sales data
       
+      // Debug specific problematic item
+      if (item.itemName.includes('1800 Silver') && item.itemName.includes('375')) {
+        console.log('=== DEBUGGING 1800 Silver 375ml ===');
+        console.log('Item name:', item.itemName);
+        console.log('Sales array:', sales);
+        console.log('Sales array length:', sales.length);
+        console.log('Total sales sum:', totalSales);
+        console.log('Actual days:', actualDays);
+        console.log('Raw sales records for this item:');
+        const matchingRecords = salesData.filter(record => record.itemName === item.itemName);
+        console.log('Matching records count:', matchingRecords.length);
+        console.log('Sample records:', matchingRecords.slice(0, 10));
+      }
+      
       console.log(`Item: ${item.itemName}, Total Sales: ${totalSales}, Days: ${actualDays}, Daily Average: ${avgDailySales.toFixed(2)}`);
       
       // Get units per case for this item
