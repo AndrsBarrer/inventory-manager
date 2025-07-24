@@ -87,6 +87,11 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
       return 5; // Nicotine pouches have 5 units per case
     }
     
+    // Detect Backwood 5 Pks (8 units per case)
+    if (name.includes('backwood') && name.includes('5 pk')) {
+      return 8; // Backwood 5 Pks have 8 units per case
+    }
+    
     // Volume-based case sizing
     if (name.includes('50ml') || name.includes('50 ml')) {
       return 120;
