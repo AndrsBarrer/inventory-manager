@@ -51,12 +51,30 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
   const getUnitsPerCase = (itemName: string, category: string): number => {
     const name = itemName.toLowerCase();
     
+    // Debug logging for case size calculation
+    console.log(`=== CASE SIZE DEBUG ===`);
+    console.log(`Item: ${itemName}`);
+    console.log(`Lowercase name: ${name}`);
+    console.log(`Contains '750': ${name.includes('750')}`);
+    console.log(`Contains '375': ${name.includes('375')}`);
+    console.log(`Contains '200': ${name.includes('200')}`);
+    
     // Volume-based case sizing
-    if (name.includes('750')) return 12;
-    if (name.includes('375')) return 24;
-    if (name.includes('200')) return 24;
+    if (name.includes('750')) {
+      console.log(`Returning 12 units/case for 750ml`);
+      return 12;
+    }
+    if (name.includes('375')) {
+      console.log(`Returning 24 units/case for 375ml`);
+      return 24;
+    }
+    if (name.includes('200')) {
+      console.log(`Returning 24 units/case for 200ml`);
+      return 24;
+    }
     
     // Default fallback
+    console.log(`Using default 12 units/case`);
     return 12;
   };
 
