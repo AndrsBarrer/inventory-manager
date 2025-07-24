@@ -80,6 +80,13 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
       return 10; // Cigarettes have 10 units per case
     }
     
+    // Detect nicotine pouches and similar products (5 units per case)
+    const nicotinePouchBrands = ['lucy', 'zyn', 'oeo', 'on!'];
+    const isNicotinePouch = nicotinePouchBrands.some(brand => name.includes(brand));
+    if (isNicotinePouch) {
+      return 5; // Nicotine pouches have 5 units per case
+    }
+    
     // Volume-based case sizing
     if (name.includes('50ml') || name.includes('50 ml')) {
       return 120;
