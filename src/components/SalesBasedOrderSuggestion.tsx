@@ -72,7 +72,7 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
     const cigaretteBrands = [
       'marlboro', 'newport', 'camel', 'pall mall', 'kool', 'parliament',
       'american spirit', 'lucky strike', 'winston', 'salem', 'doral',
-      'basic', 'virginia slims', 'misty', 'eagle 20s', 'l&m', 'merit'
+      'basic', 'virginia slims', 'misty', 'eagle 20s', 'l&m', 'merit', 'montego'
     ];
     
     const isCigarette = cigaretteBrands.some(brand => name.includes(brand));
