@@ -363,7 +363,7 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
                       </div>
                       <div className="text-right">
                         <div className="font-medium text-primary">
-                          Order: {item.suggestedCases} cases ({item.suggestedOrder} units)
+                          Order: {item.suggestedCases} cases ({item.suggestedCases * item.unitsPerCase} units)
                         </div>
                         <div className="text-sm text-muted-foreground">
                           ${item.estimatedCost.toFixed(2)}
