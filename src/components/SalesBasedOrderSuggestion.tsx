@@ -135,6 +135,19 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
   };
 
   const getEstimatedCost = (itemName: string, category: string): number => {
+    const name = itemName.toLowerCase();
+    
+    // Specific brand pricing for cigarettes
+    if (name.includes('marlboro')) {
+      return 10.67;
+    }
+    if (name.includes('camel')) {
+      return 14.50;
+    }
+    if (name.includes('newport')) {
+      return 15.00;
+    }
+    
     // Placeholder pricing logic - you'd want to add real pricing data
     const basePrices = {
       beer: 45,
