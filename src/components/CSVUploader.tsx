@@ -67,11 +67,11 @@ export const CSVUploader: React.FC<CSVUploaderProps> = ({
       const dataRows = rows.slice(1);
       
       const salesData: SalesRecord[] = dataRows
-        .filter(row => row.length >= 3)
+        .filter(row => row.length >= 9) // Need at least 9 columns for quantity at the end
         .map(row => ({
           datetime: row[0],
           itemName: row[1],
-          quantitySold: parseInt(row[2]) || 0
+          quantitySold: parseInt(row[row.length - 1]) || 0 // Quantity is in the last column
         }));
 
       onSalesDataUpload(salesData);
