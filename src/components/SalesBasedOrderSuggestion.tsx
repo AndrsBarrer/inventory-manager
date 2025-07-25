@@ -140,6 +140,16 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
     console.log('SalesBasedOrderSuggestion - Debug Info:');
     console.log('Sales data length:', salesData.length);
     console.log('Inventory data length:', inventoryData.length);
+    
+    // Debug: Check for Jameson items in inventory
+    const jamesonItems = inventoryData.filter(item => item.itemName.toLowerCase().includes('jameson'));
+    console.log('Jameson items in inventory:', jamesonItems);
+    
+    if (jamesonItems.length === 0) {
+      console.log('WARNING: No Jameson items found in inventory data');
+      console.log('Sample inventory items:', inventoryData.slice(0, 10).map(item => item.itemName));
+    }
+    
     console.log('Sales data:', salesData);
     console.log('Inventory data:', inventoryData);
 
