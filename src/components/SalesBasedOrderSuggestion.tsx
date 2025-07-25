@@ -212,8 +212,9 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
         if (avgDailySales > 0) {
           minimumStock = Math.ceil(avgDailySales * 7); // 7 days supply based on sales
         } else if (item.currentStock <= 0) {
-          // Out-of-stock items should be restocked even without recent sales history
-          minimumStock = 12; // Default minimum for out-of-stock items
+          // Out-of-stock items should get minimal restock (1 case worth) if no sales history
+          const unitsPerCase = getUnitsPerCase(item.itemName, item.category);
+          minimumStock = unitsPerCase; // Just 1 case for items with no sales
         } else {
           // Items with stock but no recent sales - don't order
           minimumStock = 0;
