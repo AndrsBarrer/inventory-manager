@@ -95,10 +95,7 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
       return 25; // Grabba Leaf Small has 25 units per case
     }
     
-    // Volume-based case sizing
-    if (name.includes('50ml') || name.includes('50 ml')) {
-      return 120;
-    }
+    // Volume-based case sizing (order matters - check more specific patterns first)
     if (name.includes('1.75') || name.includes('1750')) {
       return 6;
     }
@@ -110,6 +107,9 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
     }
     if (name.includes('200')) {
       return 24;
+    }
+    if (name.includes('50ml') || name.includes('50 ml')) {
+      return 120;
     }
     
     // Default fallback
