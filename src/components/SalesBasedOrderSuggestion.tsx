@@ -99,6 +99,27 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
     if (name.includes('jose cuervo') && name.includes('200')) {
       return 48; // Jose Cuervo Silver Tequila 200ml has 48 units per case
     }
+    if (name.includes('juul menthol')) {
+      return 8; // Juul Menthol has 8 units per case
+    }
+    if (name.includes('juul virginia tobacco')) {
+      return 8; // Juul Virginia Tobacco has 8 units per case
+    }
+    if (name.includes('juul device')) {
+      return 8; // Juul Device has 8 units per case
+    }
+    if (name.includes('dunhill')) {
+      return 10; // Dunhill has 10 units per case
+    }
+    if (name.includes('bugler pouches')) {
+      return 6; // Bugler Pouches has 6 units per case
+    }
+    if (name.includes('norwegian shag')) {
+      return 5; // Norwegian Shag has 5 units per case
+    }
+    if (name.includes('flum') || name.includes('flume')) {
+      return 10; // All Flum/Flume products have 10 units per case
+    }
 
     // Volume-based case sizing (order matters - check more specific patterns first)
     if (name.includes('1.75') || name.includes('1750')) {
