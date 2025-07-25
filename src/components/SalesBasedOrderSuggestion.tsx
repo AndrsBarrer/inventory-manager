@@ -120,6 +120,8 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
   const getMinimumStock = (itemName: string, avgDailySales: number): { minimumStock: number; daysOfSupply: number } => {
     const stockRules: Record<string, { minimumStock: number; daysOfSupply: number }> = {
       'Marlboro Lights': { minimumStock: 100, daysOfSupply: 14 }, // 10 cartons = 100 units
+      'Jameson 200ml': { minimumStock: 15, daysOfSupply: 7 },
+      'Jameson 375ml': { minimumStock: 15, daysOfSupply: 7 },
       // Add more predefined rules here as needed
     };
     
