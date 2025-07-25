@@ -194,13 +194,16 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
       // Get predefined stock rule for this item
       const stockRule = getMinimumStock(item.itemName, avgDailySales);
       
-      // Calculate minimum stock - only order items that have sales history
+      // Calculate minimum stock - prioritize out-of-stock items even without recent sales
       let minimumStock = stockRule.minimumStock;
       if (!minimumStock) {
         if (avgDailySales > 0) {
           minimumStock = Math.ceil(avgDailySales * 7); // 7 days supply based on sales
+        } else if (item.currentStock <= 0) {
+          // Out-of-stock items should be restocked even without recent sales history
+          minimumStock = 12; // Default minimum for out-of-stock items
         } else {
-          // Items with no sales history should not be ordered
+          // Items with stock but no recent sales - don't order
           minimumStock = 0;
         }
       }
