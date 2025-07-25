@@ -188,6 +188,18 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
       
       console.log(`Item: ${item.itemName}, Total Sales: ${totalSales}, Days: ${actualDays}, Daily Average: ${avgDailySales.toFixed(2)}`);
       
+      console.log(`Processing item: ${item.itemName}, Current Stock: ${item.currentStock}, Sales: ${totalSales}, Days: ${actualDays}, Avg Daily: ${avgDailySales.toFixed(2)}`);
+      
+      // Special debug for Jameson items
+      if (item.itemName.toLowerCase().includes('jameson')) {
+        console.log('=== JAMESON ITEM DEBUG ===');
+        console.log('Item name:', item.itemName);
+        console.log('Current stock:', item.currentStock);
+        console.log('Total sales:', totalSales);
+        console.log('Sales array:', sales);
+        console.log('Average daily sales:', avgDailySales);
+        console.log('Sales data matches:', salesData.filter(r => r.itemName.toLowerCase().includes('jameson')));
+      }
       // Get units per case for this item
       const unitsPerCase = getUnitsPerCase(item.itemName, item.category);
       
