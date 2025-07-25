@@ -120,6 +120,83 @@ export const InventoryDashboard: React.FC = () => {
   const [isReorderDialogOpen, setIsReorderDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Cost calculation function - matches SalesBasedOrderSuggestion logic
+  const getEstimatedCost = (itemName: string, category: string): number => {
+    const name = itemName.toLowerCase();
+    
+    // Specific brand pricing for cigarettes
+    if (name.includes('marlboro')) {
+      return 10.67;
+    }
+    if (name.includes('camel')) {
+      return 14.50;
+    }
+    if (name.includes('newport')) {
+      return 15.00;
+    }
+    if (name.includes('american spirit')) {
+      return 11.90;
+    }
+    if (name.includes('pall mall')) {
+      return 11.90;
+    }
+    if (name.includes('kool')) {
+      return 14.50;
+    }
+    if (name.includes('parliament')) {
+      return 14.50;
+    }
+    if (name.includes('lucky strike')) {
+      return 14.50;
+    }
+    if (name.includes('winston')) {
+      return 14.50;
+    }
+    if (name.includes('salem')) {
+      return 14.50;
+    }
+    if (name.includes('doral')) {
+      return 9.50;
+    }
+    if (name.includes('basic')) {
+      return 9.50;
+    }
+    if (name.includes('virginia slims')) {
+      return 14.50;
+    }
+    if (name.includes('misty')) {
+      return 9.50;
+    }
+    if (name.includes('eagle 20s')) {
+      return 9.50;
+    }
+    if (name.includes('l&m')) {
+      return 11.90;
+    }
+    if (name.includes('merit')) {
+      return 14.50;
+    }
+    if (name.includes('montego')) {
+      return 9.50;
+    }
+
+    // Category-based pricing
+    if (category === 'cigarettes' || category === 'spirits') {
+      return 11.90; // Default cigarette price
+    }
+    if (category === 'wine') {
+      return 25.00;
+    }
+    if (category === 'beer') {
+      return 45.00;
+    }
+    if (category === 'mixers') {
+      return 12.99;
+    }
+    
+    return 25.00; // Default fallback
+  };
+
   // Convert uploaded inventory data to Product format for display
   const convertedProducts: Product[] = inventoryData.map((item, index) => ({
     id: `uploaded-${index}`,
@@ -128,7 +205,7 @@ export const InventoryDashboard: React.FC = () => {
     currentStock: item.currentStock,
     reorderPoint: item.category === 'cigarettes' ? 100 : 10, // Default reorder points
     maxStock: item.category === 'cigarettes' ? 200 : 50, // Default max stock
-    unitCost: item.category === 'cigarettes' ? 85.00 : 25.00, // Default costs
+    unitCost: getEstimatedCost(item.itemName, item.category),
     supplier: item.category === 'cigarettes' ? 'Giant Wholesale (Cigarettes)' : 'Local Supplier',
     lastRestocked: '2024-01-15',
     unitsPerCase: item.category === 'cigarettes' ? 10 : 6
