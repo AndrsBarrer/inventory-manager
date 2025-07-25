@@ -180,7 +180,7 @@ export const InventoryDashboard: React.FC = () => {
   const handleGenerateOrders = (categoryOrders: CategoryOrder[]) => {
     // TODO: Implement order generation (could send to email, print, or save to database)
     console.log('Generated orders:', categoryOrders);
-    const totalCost = categoryOrders.reduce((sum, order) => sum + order.totalCost, 0);
+    const totalCost = 0; // Cost tracking removed
     alert(`Generated ${categoryOrders.length} category order(s) totaling $${totalCost.toFixed(2)}`);
   };
 

@@ -21,7 +21,6 @@ interface InventoryRecord {
 export interface CategoryOrder {
   category: 'beer' | 'wine' | 'cigarettes' | 'spirits' | 'mixers';
   items: OrderItem[];
-  totalCost: number;
   totalItems: number;
 }
 
@@ -34,7 +33,6 @@ interface OrderItem {
   unitsPerCase: number;
   daysUntilStockout: number;
   minimumStock: number;
-  estimatedCost: number;
 }
 
 interface SalesBasedOrderSuggestionProps {
@@ -134,31 +132,6 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
     return defaultRule;
   };
 
-  const getEstimatedCost = (itemName: string, category: string): number => {
-    const name = itemName.toLowerCase();
-    
-    // Specific brand pricing for cigarettes
-    if (name.includes('marlboro')) {
-      return 10.67;
-    }
-    if (name.includes('camel')) {
-      return 14.50;
-    }
-    if (name.includes('newport')) {
-      return 15.00;
-    }
-    if (name.includes('american spirit')) {
-      return 11.90;
-    }
-    
-    // Placeholder pricing logic - you'd want to add real pricing data
-    const basePrices = {
-      beer: 45,
-      wine: 25,
-      cigarettes: 85
-    };
-    return basePrices[category as keyof typeof basePrices] || 25;
-  };
 
   const categoryOrders = useMemo(() => {
     console.log('SalesBasedOrderSuggestion - Debug Info:');
@@ -245,10 +218,6 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
       
       // Convert to cases (round up to nearest case)
       const suggestedCases = Math.ceil(finalSuggestedOrder / unitsPerCase);
-      
-      // Estimate cost (placeholder - you'd need actual pricing data)
-      const estimatedUnitCost = getEstimatedCost(item.itemName, item.category);
-      const estimatedCost = finalSuggestedOrder * estimatedUnitCost;
 
       return {
         itemName: item.itemName,
@@ -258,8 +227,7 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
         suggestedCases,
         unitsPerCase,
         daysUntilStockout,
-        minimumStock,
-        estimatedCost
+        minimumStock
       };
     });
 
@@ -294,7 +262,6 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
       .map(([category, items]) => ({
         category: category as any, // Use actual category names
         items,
-        totalCost: items.reduce((sum, item) => sum + item.estimatedCost, 0),
         totalItems: items.length
       }));
   }, [salesData, inventoryData, unitsPerCaseOverrides]);
@@ -302,11 +269,10 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
   console.log('Final category orders:', categoryOrders);
   console.log('Category orders length:', categoryOrders.length);
 
-  const totalOrderValue = categoryOrders.reduce((sum, order) => sum + order.totalCost, 0);
-
   const handleGenerateAllOrders = () => {
     onGenerateOrders(categoryOrders);
   };
+
 
   if (categoryOrders.length === 0) {
     console.log('Showing NO ORDERS message - this means no items need ordering');
@@ -340,18 +306,6 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Summary */}
-        <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
-          <div>
-            <p className="text-sm text-muted-foreground">Total Order Value</p>
-            <p className="text-2xl font-bold">${totalOrderValue.toFixed(2)}</p>
-          </div>
-          <Button onClick={handleGenerateAllOrders} size="lg">
-            <TrendingUp className="h-4 w-4 mr-2" />
-            One-Click Weekly Order
-          </Button>
-        </div>
-
         {/* Quick Order Button */}
         <div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
           <div className="flex items-center justify-between">
@@ -382,9 +336,6 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
                       {categoryOrder.totalItems} items
                     </span>
                   </div>
-                  <span className="text-lg font-bold">
-                    ${categoryOrder.totalCost.toFixed(2)}
-                  </span>
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -421,9 +372,6 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
                         <div className="text-right">
                           <div className="font-medium text-primary">
                             Order: {item.suggestedCases} cases ({item.suggestedCases * item.unitsPerCase} units)
-                          </div>
-                          <div className="text-sm text-muted-foreground">
-                            ${item.estimatedCost.toFixed(2)}
                           </div>
                         </div>
                       </div>
