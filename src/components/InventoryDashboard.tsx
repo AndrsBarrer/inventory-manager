@@ -132,6 +132,17 @@ export const InventoryDashboard: React.FC = () => {
     product.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  // Debug: Check if Jameson items exist in the uploaded data
+  console.log('=== INVENTORY DEBUG ===');
+  console.log('Total inventory items:', inventoryData.length);
+  const jamesonItems = inventoryData.filter(item => item.itemName.toLowerCase().includes('jameson'));
+  console.log('Jameson items found in inventory:', jamesonItems);
+  
+  if (jamesonItems.length === 0) {
+    console.log('No Jameson items found in uploaded data');
+    console.log('Sample item names:', inventoryData.slice(0, 20).map(item => item.itemName));
+  }
+
   const totalItems = inventoryData.length;
   const totalValue = inventoryData.reduce((sum, item) => sum + (item.currentStock * 25), 0); // Placeholder pricing
   const lowStockItems = inventoryData.filter(item => {
