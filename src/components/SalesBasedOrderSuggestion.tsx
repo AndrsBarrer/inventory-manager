@@ -209,7 +209,7 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
       
       // Calculate days until stockout
       const daysUntilStockout = avgDailySales > 0 ? Math.floor(item.currentStock / avgDailySales) : 
-                                item.currentStock === 0 ? 0 : 999;
+                                item.currentStock <= 0 ? 0 : 999;
       
       // Calculate suggested order quantity (in units)
       const targetStock = Math.max(minimumStock, Math.ceil(avgDailySales * daysOfSupply));
