@@ -56,7 +56,6 @@ export const ReorderDialog: React.FC<ReorderDialogProps> = ({
   };
 
   const orderQuantity = parseInt(quantity) || 0;
-  const totalCost = orderQuantity * product.unitCost;
   const newStockLevel = product.currentStock + orderQuantity;
 
   return (
@@ -124,13 +123,6 @@ export const ReorderDialog: React.FC<ReorderDialogProps> = ({
                       <span>Quantity:</span>
                     </div>
                     <span className="font-medium">{orderQuantity} units</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <DollarSign className="h-4 w-4 text-muted-foreground" />
-                      <span>Total Cost:</span>
-                    </div>
-                    <span className="font-medium">${totalCost.toFixed(2)}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">

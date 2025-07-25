@@ -73,7 +73,7 @@ export const ProductList: React.FC<ProductListProps> = ({ products, onReorder })
                   </Button>
                 </div>
                 
-                <div className="grid grid-cols-2 md:grid-cols-6 gap-4 text-sm">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
                   <div>
                     <span className="text-muted-foreground">Current Stock:</span>
                     <div className="font-medium">{product.currentStock} units</div>
@@ -92,10 +92,6 @@ export const ProductList: React.FC<ProductListProps> = ({ products, onReorder })
                   <div>
                     <span className="text-muted-foreground">Units per Case:</span>
                     <div className="font-medium">{product.unitsPerCase} units</div>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Unit Cost:</span>
-                    <div className="font-medium">${product.unitCost}</div>
                   </div>
                   <div>
                     <span className="text-muted-foreground">Supplier:</span>

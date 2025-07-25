@@ -40,13 +40,12 @@ export const OrderSuggestion: React.FC<OrderSuggestionProps> = ({ products, onGe
         const unitsNeeded = product.maxStock - product.currentStock;
         const suggestedCases = Math.ceil(unitsNeeded / product.unitsPerCase);
         const suggestedUnits = suggestedCases * product.unitsPerCase;
-        const totalCost = suggestedUnits * product.unitCost;
 
         return {
           product,
           suggestedCases,
           suggestedUnits,
-          totalCost
+          totalCost: 0
         };
       });
 
