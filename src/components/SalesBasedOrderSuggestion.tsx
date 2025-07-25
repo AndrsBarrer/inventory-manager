@@ -3,7 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { ShoppingCart, TrendingUp, Package, Edit } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import { ShoppingCart, TrendingUp, Package, Edit, Download, Send } from 'lucide-react';
 
 
 interface SalesRecord {
@@ -46,6 +47,9 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
   inventoryData,
   onGenerateOrders
 }) => {
+  const { toast } = useToast();
+  const [webhookUrl, setWebhookUrl] = React.useState('');
+  const [isExporting, setIsExporting] = React.useState(false);
   // Store units per case overrides in localStorage
   const [unitsPerCaseOverrides, setUnitsPerCaseOverrides] = React.useState<Record<string, number>>(() => {
     const stored = localStorage.getItem('unitsPerCaseOverrides');
@@ -336,6 +340,112 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
     onGenerateOrders(categoryOrders);
   };
 
+  // Export order data as CSV
+  const exportToCSV = () => {
+    const allItems = categoryOrders.flatMap(category => 
+      category.items.map(item => ({
+        Category: category.category,
+        'Item Name': item.itemName,
+        'Current Stock': item.currentStock,
+        'Suggested Cases': item.suggestedCases,
+        'Units per Case': item.unitsPerCase,
+        'Total Units to Order': item.suggestedCases * item.unitsPerCase,
+        'Daily Sales Average': item.avgDailySales.toFixed(1),
+        'Days Until Stockout': item.daysUntilStockout
+      }))
+    );
+
+    if (allItems.length === 0) {
+      toast({
+        title: "No orders to export",
+        description: "There are no order suggestions to export.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const headers = Object.keys(allItems[0]);
+    const csvContent = [
+      headers.join(','),
+      ...allItems.map(item => 
+        headers.map(header => `"${item[header as keyof typeof item]}"`).join(',')
+      )
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `order-suggestions-${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    toast({
+      title: "Order exported",
+      description: "Order suggestions have been downloaded as a CSV file.",
+    });
+  };
+
+  // Send order to vendor via webhook
+  const sendToVendor = async () => {
+    if (!webhookUrl) {
+      toast({
+        title: "Error",
+        description: "Please enter your vendor webhook URL",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsExporting(true);
+
+    const orderData = {
+      timestamp: new Date().toISOString(),
+      orderDate: new Date().toISOString().split('T')[0],
+      totalCategories: categoryOrders.length,
+      categories: categoryOrders.map(category => ({
+        category: category.category,
+        totalItems: category.totalItems,
+        items: category.items.map(item => ({
+          itemName: item.itemName,
+          currentStock: item.currentStock,
+          suggestedCases: item.suggestedCases,
+          unitsPerCase: item.unitsPerCase,
+          totalUnitsToOrder: item.suggestedCases * item.unitsPerCase,
+          dailySalesAverage: parseFloat(item.avgDailySales.toFixed(1)),
+          daysUntilStockout: item.daysUntilStockout
+        }))
+      }))
+    };
+
+    try {
+      const response = await fetch(webhookUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        mode: "no-cors",
+        body: JSON.stringify(orderData),
+      });
+
+      toast({
+        title: "Order sent to vendor",
+        description: "The order has been sent to your vendor. Check your automation system to confirm receipt.",
+      });
+    } catch (error) {
+      console.error("Error sending order to vendor:", error);
+      toast({
+        title: "Error",
+        description: "Failed to send order to vendor. Please check the URL and try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
 
   if (categoryOrders.length === 0) {
     console.log('Showing NO ORDERS message - this means no items need ordering');
@@ -382,6 +492,45 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
               <ShoppingCart className="h-4 w-4 mr-2" />
               Generate Week's Order
             </Button>
+          </div>
+        </div>
+
+        {/* Export Options */}
+        <div className="bg-secondary/5 border border-secondary/20 rounded-lg p-4 space-y-4">
+          <h4 className="font-medium">Export Order to Vendor</h4>
+          
+          {/* CSV Export */}
+          <div className="flex items-center gap-2">
+            <Button onClick={exportToCSV} variant="outline" size="sm">
+              <Download className="h-4 w-4 mr-2" />
+              Download CSV
+            </Button>
+            <span className="text-sm text-muted-foreground">Download order as spreadsheet</span>
+          </div>
+
+          {/* Webhook Export */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Input
+                type="url"
+                placeholder="Enter vendor webhook URL (e.g., Zapier webhook)"
+                value={webhookUrl}
+                onChange={(e) => setWebhookUrl(e.target.value)}
+                className="flex-1"
+              />
+              <Button 
+                onClick={sendToVendor} 
+                variant="outline" 
+                size="sm"
+                disabled={isExporting || !webhookUrl}
+              >
+                <Send className="h-4 w-4 mr-2" />
+                {isExporting ? 'Sending...' : 'Send to Vendor'}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Send order data directly to your vendor's system via webhook (Zapier, Make, etc.)
+            </p>
           </div>
         </div>
 
