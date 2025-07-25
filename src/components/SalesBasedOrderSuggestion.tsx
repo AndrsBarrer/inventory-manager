@@ -95,6 +95,11 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
       return 25; // Grabba Leaf Small has 25 units per case
     }
     
+    // Specific product overrides (check before general volume rules)
+    if (name.includes('jose cuervo') && name.includes('200')) {
+      return 48; // Jose Cuervo Silver Tequila 200ml has 48 units per case
+    }
+
     // Volume-based case sizing (order matters - check more specific patterns first)
     if (name.includes('1.75') || name.includes('1750')) {
       return 6;
