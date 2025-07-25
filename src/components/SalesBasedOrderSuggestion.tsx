@@ -120,6 +120,12 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
     if (name.includes('flum') || name.includes('flume')) {
       return 10; // All Flum/Flume products have 10 units per case
     }
+    if (name.includes('grizzly')) {
+      return 5; // Grizzly has 5 units per case
+    }
+    if (name.includes('velo')) {
+      return 5; // Velo has 5 units per case
+    }
 
     // Volume-based case sizing (order matters - check more specific patterns first)
     if (name.includes('1.75') || name.includes('1750')) {
