@@ -99,6 +99,9 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
     if (name.includes('50ml') || name.includes('50 ml')) {
       return 120;
     }
+    if (name.includes('1.75') || name.includes('1750')) {
+      return 6;
+    }
     if (name.includes('750')) {
       return 12;
     }
