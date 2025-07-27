@@ -107,8 +107,14 @@ interface InventoryRecord {
 export const InventoryDashboard: React.FC = () => {
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [salesData, setSalesData] = useState<SalesRecord[]>([]);
-  const [inventoryData, setInventoryData] = useState<InventoryRecord[]>([]);
+  const [salesData, setSalesData] = useState<SalesRecord[]>(() => {
+    const saved = localStorage.getItem('salesData');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [inventoryData, setInventoryData] = useState<InventoryRecord[]>(() => {
+    const saved = localStorage.getItem('inventoryData');
+    return saved ? JSON.parse(saved) : [];
+  });
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isReorderDialogOpen, setIsReorderDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -174,6 +180,7 @@ export const InventoryDashboard: React.FC = () => {
     console.log('Sales data received:', data);
     console.log('Sales data length:', data.length);
     setSalesData(data);
+    localStorage.setItem('salesData', JSON.stringify(data));
   };
 
   const handleInventoryDataUpload = (data: InventoryRecord[]) => {
@@ -181,6 +188,7 @@ export const InventoryDashboard: React.FC = () => {
     console.log('Inventory data received:', data);
     console.log('Inventory data length:', data.length);
     setInventoryData(data);
+    localStorage.setItem('inventoryData', JSON.stringify(data));
   };
 
   const handleReorder = (product: Product) => {
