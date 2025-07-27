@@ -536,7 +536,7 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
 
         {/* Category Orders */}
         <div className="space-y-4">
-          {categoryOrders.map(categoryOrder => (
+          {categoryOrders.sort((a, b) => a.category.localeCompare(b.category)).map(categoryOrder => (
             <Card key={categoryOrder.category} className="border-l-4 border-l-primary">
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
