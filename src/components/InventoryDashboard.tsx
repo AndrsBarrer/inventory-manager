@@ -199,14 +199,6 @@ export const InventoryDashboard: React.FC = () => {
     localStorage.setItem('inventoryData', JSON.stringify(data));
   };
 
-  const clearAllData = () => {
-    setSalesData([]);
-    setInventoryData([]);
-    localStorage.removeItem('salesData');
-    localStorage.removeItem('inventoryData');
-    console.log('All data cleared');
-  };
-
   const handleReorder = (product: Product) => {
     setSelectedProduct(product);
     setIsReorderDialogOpen(true);
@@ -265,7 +257,6 @@ export const InventoryDashboard: React.FC = () => {
       <CSVUploader 
         onSalesDataUpload={handleSalesDataUpload}
         onInventoryDataUpload={handleInventoryDataUpload}
-        onClearData={clearAllData}
       />
 
 

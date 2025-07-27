@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Upload, FileText, CheckCircle, Trash2 } from 'lucide-react';
+import { Upload, FileText, CheckCircle } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 
 interface SalesRecord {
@@ -21,13 +21,11 @@ interface InventoryRecord {
 interface CSVUploaderProps {
   onSalesDataUpload: (data: SalesRecord[]) => void;
   onInventoryDataUpload: (data: InventoryRecord[]) => void;
-  onClearData?: () => void;
 }
 
 export const CSVUploader: React.FC<CSVUploaderProps> = ({
   onSalesDataUpload,
-  onInventoryDataUpload,
-  onClearData
+  onInventoryDataUpload
 }) => {
   const [salesFile, setSalesFile] = useState<File | null>(null);
   const [inventoryFile, setInventoryFile] = useState<File | null>(null);
@@ -125,38 +123,7 @@ export const CSVUploader: React.FC<CSVUploaderProps> = ({
   };
 
   return (
-    <div className="space-y-6">
-      {/* Clear Data Button */}
-      {onClearData && (salesUploaded || inventoryUploaded) && (
-        <Card className="border-orange-200 bg-orange-50">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="font-medium text-orange-800">Reset Data</h4>
-                <p className="text-sm text-orange-600">
-                  Clear all uploaded data to start fresh with new order calculations
-                </p>
-              </div>
-              <Button 
-                variant="outline" 
-                onClick={() => {
-                  onClearData();
-                  setSalesUploaded(false);
-                  setInventoryUploaded(false);
-                  setSalesFile(null);
-                  setInventoryFile(null);
-                }}
-                className="border-orange-300 text-orange-700 hover:bg-orange-100"
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                Clear All Data
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
       {/* Sales History Upload */}
       <Card>
         <CardHeader>
@@ -248,7 +215,6 @@ export const CSVUploader: React.FC<CSVUploaderProps> = ({
           </Button>
         </CardContent>
       </Card>
-      </div>
     </div>
   );
 };
