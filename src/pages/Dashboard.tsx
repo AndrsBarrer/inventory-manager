@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { InventoryDashboard } from '@/components/InventoryDashboard';
+import { Plus, ShoppingCart } from 'lucide-react';
 
 const Dashboard = () => {
   const [loading, setLoading] = useState(true);
@@ -21,6 +22,14 @@ const Dashboard = () => {
   const handleSignOut = () => {
     localStorage.removeItem('isAuthenticated');
     navigate('/');
+  };
+
+  const handleNewOrder = () => {
+    // Clear all order data
+    localStorage.removeItem('salesData');
+    localStorage.removeItem('inventoryData');
+    // Refresh the page to reset the InventoryDashboard component state
+    window.location.reload();
   };
 
   if (loading) {
@@ -44,9 +53,18 @@ const Dashboard = () => {
             </h1>
             <p className="text-muted-foreground">Manage your inventory, track stock levels, and create reorder requests</p>
           </div>
-          <Button variant="outline" onClick={handleSignOut}>
-            Sign Out
-          </Button>
+          <div className="flex items-center gap-3">
+            <Button 
+              onClick={handleNewOrder}
+              className="bg-primary hover:bg-primary/90 text-primary-foreground"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              NEW ORDER
+            </Button>
+            <Button variant="outline" onClick={handleSignOut}>
+              Sign Out
+            </Button>
+          </div>
         </div>
         <InventoryDashboard />
       </div>
