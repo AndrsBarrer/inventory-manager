@@ -179,6 +179,14 @@ export const InventoryDashboard: React.FC = () => {
     console.log('=== SALES DATA UPLOADED ===');
     console.log('Sales data received:', data);
     console.log('Sales data length:', data.length);
+    
+    // Clear previous data first
+    setSalesData([]);
+    setInventoryData([]);
+    localStorage.removeItem('salesData');
+    localStorage.removeItem('inventoryData');
+    
+    // Set new data
     setSalesData(data);
     localStorage.setItem('salesData', JSON.stringify(data));
   };
@@ -189,6 +197,14 @@ export const InventoryDashboard: React.FC = () => {
     console.log('Inventory data length:', data.length);
     setInventoryData(data);
     localStorage.setItem('inventoryData', JSON.stringify(data));
+  };
+
+  const clearAllData = () => {
+    setSalesData([]);
+    setInventoryData([]);
+    localStorage.removeItem('salesData');
+    localStorage.removeItem('inventoryData');
+    console.log('All data cleared');
   };
 
   const handleReorder = (product: Product) => {
@@ -246,9 +262,10 @@ export const InventoryDashboard: React.FC = () => {
       />
 
       {/* CSV Upload Section */}
-      <CSVUploader
+      <CSVUploader 
         onSalesDataUpload={handleSalesDataUpload}
         onInventoryDataUpload={handleInventoryDataUpload}
+        onClearData={clearAllData}
       />
 
 
