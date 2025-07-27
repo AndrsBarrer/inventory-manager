@@ -325,6 +325,7 @@ export const InventoryDashboard: React.FC = () => {
         <ProductList
           products={filteredProducts}
           onReorder={handleReorder}
+          salesData={salesData}
         />
       )}
 

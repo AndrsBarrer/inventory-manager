@@ -5,9 +5,16 @@ import { Button } from '@/components/ui/button';
 import { Wine, Beer, Zap, Coffee } from 'lucide-react';
 import { Product } from './InventoryDashboard';
 
+interface SalesRecord {
+  datetime: string;
+  itemName: string;
+  quantitySold: number;
+}
+
 interface ProductListProps {
   products: Product[];
   onReorder: (product: Product) => void;
+  salesData?: SalesRecord[];
 }
 
 const getCategoryIcon = (category: Product['category']) => {
@@ -36,7 +43,20 @@ const getStockStatus = (currentStock: number, reorderPoint: number) => {
   return { label: 'In Stock', variant: 'default' as const };
 };
 
-export const ProductList: React.FC<ProductListProps> = ({ products, onReorder }) => {
+const calculateDailySales = (itemName: string, salesData: SalesRecord[]) => {
+  if (!salesData || salesData.length === 0) return 0;
+  
+  const itemSales = salesData.filter(sale => sale.itemName === itemName);
+  if (itemSales.length === 0) return 0;
+  
+  const totalSold = itemSales.reduce((sum, sale) => sum + sale.quantitySold, 0);
+  const dates = new Set(itemSales.map(sale => sale.datetime.split('T')[0]));
+  const daysWithSales = dates.size;
+  
+  return daysWithSales > 0 ? totalSold / daysWithSales : 0;
+};
+
+export const ProductList: React.FC<ProductListProps> = ({ products, onReorder, salesData = [] }) => {
   return (
     <Card>
       <CardHeader>
@@ -47,6 +67,7 @@ export const ProductList: React.FC<ProductListProps> = ({ products, onReorder })
           {products.map(product => {
             const stockStatus = getStockStatus(product.currentStock, product.reorderPoint);
             const stockPercentage = (product.currentStock / product.maxStock) * 100;
+            const dailySales = calculateDailySales(product.name, salesData);
             
             return (
               <div key={product.id} className="border rounded-lg p-4 space-y-3">
@@ -73,12 +94,19 @@ export const ProductList: React.FC<ProductListProps> = ({ products, onReorder })
                   </Button>
                 </div>
                 
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
+                <div className="grid grid-cols-2 md:grid-cols-6 gap-4 text-sm">
                   <div>
                     <span className="text-muted-foreground">Current Stock:</span>
                     <div className="font-medium">{product.currentStock} units</div>
                     <div className="text-xs text-muted-foreground">
                       ({Math.floor(product.currentStock / product.unitsPerCase)} cases + {product.currentStock % product.unitsPerCase} units)
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Daily Sales:</span>
+                    <div className="font-medium">{dailySales.toFixed(1)} units</div>
+                    <div className="text-xs text-muted-foreground">
+                      {dailySales > 0 ? `${Math.ceil(product.currentStock / dailySales)} days left` : 'No sales data'}
                     </div>
                   </div>
                   <div>
