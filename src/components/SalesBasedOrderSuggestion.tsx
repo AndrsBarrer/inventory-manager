@@ -159,6 +159,7 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
       'Jameson 200ml': { minimumStock: 15, daysOfSupply: 7 },
       'Jameson 375ml': { minimumStock: 15, daysOfSupply: 7 },
       "Chateau d'esclans 'Whispering Angel' Rose": { minimumStock: 6, daysOfSupply: 7 }, // Order at 6 units - people buy 3 at a time
+      'Chateau Souverain Wine Cabernet Sauvignon': { minimumStock: 5, daysOfSupply: 7 }, // Minimum 5 units
       // Add more predefined rules here as needed
     };
     
