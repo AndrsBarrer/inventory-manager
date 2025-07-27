@@ -46,7 +46,11 @@ const Dashboard = () => {
         <div className="mb-8 flex justify-between items-center">
           <div>
             <h1 
-              className="text-3xl font-inter font-light tracking-wide bg-gradient-to-r from-slate-400 via-slate-300 to-slate-500 bg-clip-text text-transparent mb-2 cursor-pointer hover:from-slate-300 hover:via-slate-200 hover:to-slate-400 transition-all duration-300" 
+              className="text-3xl font-inter font-bold tracking-wide bg-gradient-to-r from-slate-300 via-white to-slate-300 bg-clip-text text-transparent mb-2 cursor-pointer hover:from-slate-200 hover:via-slate-100 hover:to-slate-200 transition-all duration-300 drop-shadow-lg"
+              style={{ 
+                textShadow: '0 0 1px rgba(0,0,0,0.5), 0 0 2px rgba(0,0,0,0.3)',
+                WebkitTextStroke: '0.5px rgba(100,100,100,0.3)'
+              }}
               onClick={() => navigate('/')}
             >
               ORDER MIND AI
