@@ -46,10 +46,10 @@ const Dashboard = () => {
         <div className="mb-8 flex justify-between items-center">
           <div>
             <h1 
-              className="text-3xl font-bold text-foreground mb-2 cursor-pointer hover:text-primary transition-colors" 
+              className="text-3xl font-inter font-light tracking-wide bg-gradient-to-r from-slate-400 via-slate-300 to-slate-500 bg-clip-text text-transparent mb-2 cursor-pointer hover:from-slate-300 hover:via-slate-200 hover:to-slate-400 transition-all duration-300" 
               onClick={() => navigate('/')}
             >
-              SKU AI
+              ORDER MIND AI
             </h1>
             <p className="text-muted-foreground">Manage your inventory, track stock levels, and create reorder requests</p>
           </div>
