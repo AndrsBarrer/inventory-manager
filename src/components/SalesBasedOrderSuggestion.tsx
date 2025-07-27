@@ -249,6 +249,17 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
         console.log('Average daily sales:', avgDailySales);
         console.log('Sales data matches:', salesData.filter(r => r.itemName.toLowerCase().includes('jameson')));
       }
+
+      // Special debug for Chateau Souverain items
+      if (item.itemName.toLowerCase().includes('chateau souverain')) {
+        console.log('=== CHATEAU SOUVERAIN ITEM DEBUG ===');
+        console.log('Item name:', item.itemName);
+        console.log('Current stock:', item.currentStock);
+        console.log('Total sales:', totalSales);
+        console.log('Sales array:', sales);
+        console.log('Average daily sales:', avgDailySales);
+        console.log('Sales data matches:', salesData.filter(r => r.itemName.toLowerCase().includes('chateau souverain')));
+      }
       // Get units per case for this item
       const unitsPerCase = getUnitsPerCase(item.itemName, item.category);
       
@@ -301,6 +312,18 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
 
     console.log('All calculated order items (before filtering):', orderItems);
     console.log('Items that need ordering (after filtering):', orderItems.filter(item => item.suggestedOrder > 0));
+
+    // Debug filtering process for specific items
+    const chateauItems = orderItems.filter(item => item.itemName.toLowerCase().includes('chateau souverain'));
+    if (chateauItems.length > 0) {
+      console.log('=== CHATEAU SOUVERAIN FILTERING DEBUG ===');
+      chateauItems.forEach(item => {
+        console.log(`Item: ${item.itemName}`);
+        console.log(`Suggested Order: ${item.suggestedOrder} (needs > 0)`);
+        console.log(`Avg Daily Sales: ${item.avgDailySales} (needs > 0)`);
+        console.log(`Will be included: ${item.suggestedOrder > 0 && item.avgDailySales > 0}`);
+      });
+    }
 
     const filteredOrderItems = orderItems.filter(item => item.suggestedOrder > 0 && item.avgDailySales > 0);
 
