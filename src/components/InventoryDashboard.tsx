@@ -195,25 +195,38 @@ export const InventoryDashboard: React.FC = () => {
     }
     
     setIsLoading(true);
+    console.log('🔄 Starting sync for location:', selectedLocation.name, selectedLocation.squareLocationId);
+    
     try {
-      console.log('Syncing data for location:', selectedLocation.name);
-      
       // Fetch inventory data from Square
+      console.log('📦 Fetching inventory data...');
       const { data: inventoryData, error: inventoryError } = await supabase.functions.invoke('square-integration', {
         body: { action: 'get-inventory', locationId: selectedLocation.squareLocationId }
       });
 
-      if (inventoryError) throw inventoryError;
+      console.log('📦 Inventory response:', inventoryData, inventoryError);
+
+      if (inventoryError) {
+        console.error('❌ Inventory error:', inventoryError);
+        throw inventoryError;
+      }
 
       // Fetch sales data from Square
+      console.log('📊 Fetching sales data...');
       const { data: salesData, error: salesError } = await supabase.functions.invoke('square-integration', {
         body: { action: 'get-sales', locationId: selectedLocation.squareLocationId }
       });
 
-      if (salesError) throw salesError;
+      console.log('📊 Sales response:', salesData, salesError);
+
+      if (salesError) {
+        console.error('❌ Sales error:', salesError);
+        throw salesError;
+      }
 
       // Update state with real data from Square
       if (inventoryData?.products) {
+        console.log('✅ Processing', inventoryData.products.length, 'inventory items');
         const convertedInventory = inventoryData.products.map((product: any) => ({
           itemName: product.name,
           currentStock: product.currentStock,
@@ -221,9 +234,13 @@ export const InventoryDashboard: React.FC = () => {
         }));
         setInventoryData(convertedInventory);
         localStorage.setItem('inventoryData', JSON.stringify(convertedInventory));
+        console.log('✅ Inventory data saved:', convertedInventory);
+      } else {
+        console.log('⚠️ No inventory products found');
       }
 
       if (salesData?.salesRecords) {
+        console.log('✅ Processing', salesData.salesRecords.length, 'sales records');
         const convertedSales = salesData.salesRecords.map((record: any) => ({
           datetime: record.saleDate,
           itemName: record.productName,
@@ -231,11 +248,14 @@ export const InventoryDashboard: React.FC = () => {
         }));
         setSalesData(convertedSales);
         localStorage.setItem('salesData', JSON.stringify(convertedSales));
+        console.log('✅ Sales data saved:', convertedSales);
+      } else {
+        console.log('⚠️ No sales records found');
       }
 
-      console.log('Successfully synced Square data');
+      console.log('🎉 Successfully synced Square data');
     } catch (error) {
-      console.error('Error syncing Square data:', error);
+      console.error('💥 Error syncing Square data:', error);
     } finally {
       setIsLoading(false);
     }
