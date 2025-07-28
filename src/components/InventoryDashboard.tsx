@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,7 @@ import { ProductList } from './ProductList';
 import { ReorderDialog } from './ReorderDialog';
 import { LocationSelector, Location } from './LocationSelector';
 import { CSVUploader } from './CSVUploader';
+import { supabase } from '@/integrations/supabase/client';
 
 import { SalesBasedOrderSuggestion, CategoryOrder } from './SalesBasedOrderSuggestion';
 
@@ -106,6 +107,7 @@ interface InventoryRecord {
 
 export const InventoryDashboard: React.FC = () => {
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
+  const [squareLocations, setSquareLocations] = useState<Location[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [salesData, setSalesData] = useState<SalesRecord[]>(() => {
     const saved = localStorage.getItem('salesData');
@@ -161,18 +163,82 @@ export const InventoryDashboard: React.FC = () => {
     return item.currentStock <= minimumStock;
   });
 
+  // Fetch Square locations on component mount
+  useEffect(() => {
+    const fetchSquareLocations = async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke('square-integration', {
+          body: { action: 'get-locations' }
+        });
+
+        if (error) throw error;
+
+        if (data?.locations) {
+          setSquareLocations(data.locations);
+        }
+      } catch (error) {
+        console.error('Error fetching Square locations:', error);
+      }
+    };
+
+    fetchSquareLocations();
+  }, []);
+
   const handleLocationSelect = (location: Location) => {
     setSelectedLocation(location);
   };
 
   const handleSyncSquareData = async () => {
-    if (!selectedLocation) return;
+    if (!selectedLocation) {
+      console.log('No location selected');
+      return;
+    }
     
     setIsLoading(true);
-    // TODO: Replace with actual Square API call when Supabase is connected
-    setTimeout(() => {
+    try {
+      console.log('Syncing data for location:', selectedLocation.name);
+      
+      // Fetch inventory data from Square
+      const { data: inventoryData, error: inventoryError } = await supabase.functions.invoke('square-integration', {
+        body: { action: 'get-inventory', locationId: selectedLocation.squareLocationId }
+      });
+
+      if (inventoryError) throw inventoryError;
+
+      // Fetch sales data from Square
+      const { data: salesData, error: salesError } = await supabase.functions.invoke('square-integration', {
+        body: { action: 'get-sales', locationId: selectedLocation.squareLocationId }
+      });
+
+      if (salesError) throw salesError;
+
+      // Update state with real data from Square
+      if (inventoryData?.products) {
+        const convertedInventory = inventoryData.products.map((product: any) => ({
+          itemName: product.name,
+          currentStock: product.currentStock,
+          category: 'wine' as const // Default category for Square items
+        }));
+        setInventoryData(convertedInventory);
+        localStorage.setItem('inventoryData', JSON.stringify(convertedInventory));
+      }
+
+      if (salesData?.salesRecords) {
+        const convertedSales = salesData.salesRecords.map((record: any) => ({
+          datetime: record.saleDate,
+          itemName: record.productName,
+          quantitySold: record.quantitySold
+        }));
+        setSalesData(convertedSales);
+        localStorage.setItem('salesData', JSON.stringify(convertedSales));
+      }
+
+      console.log('Successfully synced Square data');
+    } catch (error) {
+      console.error('Error syncing Square data:', error);
+    } finally {
       setIsLoading(false);
-    }, 2000);
+    }
   };
 
   const handleSalesDataUpload = (data: SalesRecord[]) => {
@@ -217,7 +283,7 @@ export const InventoryDashboard: React.FC = () => {
     <div className="space-y-6">
       {/* Location Selector */}
       <LocationSelector
-        locations={[]}
+        locations={squareLocations}
         selectedLocation={selectedLocation}
         onLocationSelect={handleLocationSelect}
       />
