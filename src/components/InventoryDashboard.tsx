@@ -6,9 +6,7 @@ import { Input } from '@/components/ui/input';
 import { AlertTriangle, Package, ShoppingCart, TrendingDown, RefreshCw, Search } from 'lucide-react';
 import { ProductList } from './ProductList';
 import { ReorderDialog } from './ReorderDialog';
-import { LocationSelector, Location } from './LocationSelector';
 import { CSVUploader } from './CSVUploader';
-import { supabase } from '@/integrations/supabase/client';
 
 import { SalesBasedOrderSuggestion, CategoryOrder } from './SalesBasedOrderSuggestion';
 
@@ -106,9 +104,6 @@ interface InventoryRecord {
 }
 
 export const InventoryDashboard: React.FC = () => {
-  const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
-  const [squareLocations, setSquareLocations] = useState<Location[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
   const [salesData, setSalesData] = useState<SalesRecord[]>(() => {
     const saved = localStorage.getItem('salesData');
     return saved ? JSON.parse(saved) : [];
@@ -163,107 +158,6 @@ export const InventoryDashboard: React.FC = () => {
     return item.currentStock <= minimumStock;
   });
 
-  // Fetch Square locations on component mount
-  useEffect(() => {
-    const fetchSquareLocations = async () => {
-      try {
-        const { data, error } = await supabase.functions.invoke('square-integration', {
-          body: { action: 'get-locations' }
-        });
-
-        if (error) throw error;
-
-        if (data?.locations) {
-          setSquareLocations(data.locations);
-        }
-      } catch (error) {
-        console.error('Error fetching Square locations:', error);
-      }
-    };
-
-    fetchSquareLocations();
-  }, []);
-
-  const handleLocationSelect = (location: Location) => {
-    setSelectedLocation(location);
-  };
-
-  const handleSyncSquareData = async () => {
-    if (!selectedLocation) {
-      console.log('No location selected');
-      return;
-    }
-    
-    setIsLoading(true);
-    console.log('🔄 Starting sync for location:', selectedLocation.name, selectedLocation.squareLocationId);
-    
-    try {
-      // Fetch inventory data from Square
-      console.log('📦 Fetching inventory data...');
-      const { data: inventoryData, error: inventoryError } = await supabase.functions.invoke('square-integration', {
-        body: { action: 'get-inventory', locationId: selectedLocation.squareLocationId }
-      });
-
-      console.log('📦 Inventory response:', inventoryData, inventoryError);
-
-      if (inventoryError) {
-        console.error('❌ Inventory error:', inventoryError);
-        throw inventoryError;
-      }
-
-      // Fetch sales data from Square
-      console.log('📊 Fetching sales data...');
-      const { data: salesData, error: salesError } = await supabase.functions.invoke('square-integration', {
-        body: { action: 'get-sales', locationId: selectedLocation.squareLocationId }
-      });
-
-      console.log('📊 Sales response:', salesData, salesError);
-
-      if (salesError) {
-        console.error('❌ Sales error:', salesError);
-        throw salesError;
-      }
-
-      // Update state with real data from Square
-      if (inventoryData?.products) {
-        console.log('✅ Processing', inventoryData.products.length, 'inventory items');
-        // Square products are already in the right format, just use them directly
-        setInventoryData(inventoryData.products.map((product: any) => ({
-          itemName: product.name,
-          currentStock: product.currentStock,
-          category: product.category === 'General' ? 'wine' : product.category // Map General to wine for display
-        })));
-        localStorage.setItem('inventoryData', JSON.stringify(inventoryData.products.map((product: any) => ({
-          itemName: product.name,
-          currentStock: product.currentStock,
-          category: product.category === 'General' ? 'wine' : product.category
-        }))));
-        console.log('✅ Inventory data saved');
-      } else {
-        console.log('⚠️ No inventory products found');
-      }
-
-      if (salesData?.salesRecords) {
-        console.log('✅ Processing', salesData.salesRecords.length, 'sales records');
-        const convertedSales = salesData.salesRecords.map((record: any) => ({
-          datetime: record.saleDate,
-          itemName: record.productName,
-          quantitySold: record.quantitySold
-        }));
-        setSalesData(convertedSales);
-        localStorage.setItem('salesData', JSON.stringify(convertedSales));
-        console.log('✅ Sales data saved:', convertedSales);
-      } else {
-        console.log('⚠️ No sales records found');
-      }
-
-      console.log('🎉 Successfully synced Square data');
-    } catch (error) {
-      console.error('💥 Error syncing Square data:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const handleSalesDataUpload = (data: SalesRecord[]) => {
     console.log('=== SALES DATA UPLOADED ===');
@@ -305,36 +199,6 @@ export const InventoryDashboard: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Location Selector */}
-      <LocationSelector
-        locations={squareLocations}
-        selectedLocation={selectedLocation}
-        onLocationSelect={handleLocationSelect}
-      />
-
-      {/* Sync Button */}
-      {selectedLocation && (
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-semibold">Square POS Integration</h3>
-                <p className="text-sm text-muted-foreground">
-                  Sync inventory data from {selectedLocation.name}
-                </p>
-              </div>
-              <Button
-                onClick={handleSyncSquareData}
-                disabled={isLoading || selectedLocation.status !== 'active'}
-                className="flex items-center gap-2"
-              >
-                <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-                {isLoading ? 'Syncing...' : 'Sync Now'}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Sales-Based Order Suggestions - Moved up per user request */}
       <SalesBasedOrderSuggestion
