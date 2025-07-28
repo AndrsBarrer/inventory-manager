@@ -54,7 +54,9 @@ Deno.serve(async (req) => {
       throw new Error('Square Access Token not configured')
     }
 
-    const squareApiBase = 'https://connect.squareup.com/v2'
+    // Determine if this is sandbox or production based on token
+    const isSandbox = squareAccessToken.startsWith('EAAA')
+    const squareApiBase = isSandbox ? 'https://connect.squareupsandbox.com/v2' : 'https://connect.squareup.com/v2'
     const headers = {
       'Authorization': `Bearer ${squareAccessToken}`,
       'Content-Type': 'application/json',
