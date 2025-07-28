@@ -123,6 +123,7 @@ Deno.serve(async (req) => {
 
         const inventoryData = await inventoryResponse.json()
         console.log('Fetched inventory counts:', inventoryData.counts?.length || 0)
+        console.log('Inventory data:', JSON.stringify(inventoryData, null, 2))
 
         // Combine catalog and inventory data
         const products = catalogData.objects?.map((item: SquareCatalogItem) => {
