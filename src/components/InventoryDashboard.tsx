@@ -261,6 +261,53 @@ export const InventoryDashboard: React.FC = () => {
     }
   };
 
+  const handleLoadTestData = () => {
+    console.log('🧪 Loading test inventory data...');
+    
+    // Sample liquor store inventory data
+    const testInventoryData = [
+      { itemName: 'B&H DeLuxe 100s', currentStock: 45, category: 'cigarettes' as const },
+      { itemName: 'Capri Cigarettes', currentStock: 23, category: 'cigarettes' as const },
+      { itemName: 'Djarum Black', currentStock: 67, category: 'cigarettes' as const },
+      { itemName: 'Jameson Irish Whiskey 750ml', currentStock: 12, category: 'wine' as const },
+      { itemName: 'Grey Goose Vodka 750ml', currentStock: 8, category: 'wine' as const },
+      { itemName: 'Hennessy VS Cognac 750ml', currentStock: 15, category: 'wine' as const },
+      { itemName: 'Patron Silver Tequila 750ml', currentStock: 6, category: 'wine' as const },
+      { itemName: 'Jack Daniels Whiskey 750ml', currentStock: 18, category: 'wine' as const },
+      { itemName: 'Heineken Beer 6-pack', currentStock: 34, category: 'beer' as const },
+      { itemName: 'Corona Extra 12-pack', currentStock: 28, category: 'beer' as const },
+      { itemName: 'Budweiser 24-pack', currentStock: 22, category: 'beer' as const },
+      { itemName: 'Stella Artois 6-pack', currentStock: 19, category: 'beer' as const },
+      { itemName: 'Red Bull Energy Drink 4-pack', currentStock: 41, category: 'beer' as const },
+      { itemName: 'Monster Energy 4-pack', currentStock: 33, category: 'beer' as const }
+    ];
+
+    // Sample sales data from last 30 days
+    const testSalesData = [
+      { datetime: '2024-01-20T14:30:00Z', itemName: 'B&H DeLuxe 100s', quantitySold: 15 },
+      { datetime: '2024-01-20T15:45:00Z', itemName: 'Jameson Irish Whiskey 750ml', quantitySold: 3 },
+      { datetime: '2024-01-21T10:15:00Z', itemName: 'Capri Cigarettes', quantitySold: 8 },
+      { datetime: '2024-01-21T16:20:00Z', itemName: 'Heineken Beer 6-pack', quantitySold: 5 },
+      { datetime: '2024-01-22T12:00:00Z', itemName: 'Grey Goose Vodka 750ml', quantitySold: 2 },
+      { datetime: '2024-01-22T18:30:00Z', itemName: 'Corona Extra 12-pack', quantitySold: 4 },
+      { datetime: '2024-01-23T09:45:00Z', itemName: 'Djarum Black', quantitySold: 12 },
+      { datetime: '2024-01-23T14:15:00Z', itemName: 'Red Bull Energy Drink 4-pack', quantitySold: 7 }
+    ];
+
+    // Update state with test data
+    setInventoryData(testInventoryData);
+    setSalesData(testSalesData);
+    
+    // Save to localStorage
+    localStorage.setItem('inventoryData', JSON.stringify(testInventoryData));
+    localStorage.setItem('salesData', JSON.stringify(testSalesData));
+    
+    console.log('✅ Test data loaded:', { 
+      inventory: testInventoryData.length + ' items', 
+      sales: testSalesData.length + ' records' 
+    });
+  };
+
   const handleSalesDataUpload = (data: SalesRecord[]) => {
     console.log('=== SALES DATA UPLOADED ===');
     console.log('Sales data received:', data);
@@ -308,11 +355,28 @@ export const InventoryDashboard: React.FC = () => {
         onLocationSelect={handleLocationSelect}
       />
 
-      {/* Sync Button */}
-      {selectedLocation && (
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
+      {/* Test Data and Sync Buttons */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="font-semibold">Wolf Liquor Test Data</h3>
+              <p className="text-sm text-muted-foreground">
+                Load sample inventory data to test ORDER MIND AI
+              </p>
+            </div>
+            <Button
+              onClick={handleLoadTestData}
+              variant="outline"
+              className="flex items-center gap-2"
+            >
+              <Package className="h-4 w-4" />
+              Load Test Data
+            </Button>
+          </div>
+          
+          {selectedLocation && (
+            <div className="flex items-center justify-between border-t pt-4">
               <div>
                 <h3 className="font-semibold">Square POS Integration</h3>
                 <p className="text-sm text-muted-foreground">
@@ -328,9 +392,9 @@ export const InventoryDashboard: React.FC = () => {
                 {isLoading ? 'Syncing...' : 'Sync Now'}
               </Button>
             </div>
-          </CardContent>
-        </Card>
-      )}
+          )}
+        </CardContent>
+      </Card>
 
       {/* Sales-Based Order Suggestions - Moved up per user request */}
       <SalesBasedOrderSuggestion
