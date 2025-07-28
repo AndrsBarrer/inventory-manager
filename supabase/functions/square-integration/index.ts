@@ -140,13 +140,15 @@ Deno.serve(async (req) => {
             currentStock: parseInt(inventoryCount?.quantity || '0'),
             reorderPoint: 5, // Default reorder point
             lastOrdered: null,
-            supplier: 'Unknown',
+            supplier: 'Square POS',
             cost: price / 100, // Convert cents to dollars
             price: price / 100,
             lastSync: new Date().toISOString()
           }
         }).filter(product => product.name !== 'Unknown Item') || []
 
+        console.log(`Processed ${products.length} products with inventory`)
+        
         return new Response(
           JSON.stringify({ products }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

@@ -227,14 +227,18 @@ export const InventoryDashboard: React.FC = () => {
       // Update state with real data from Square
       if (inventoryData?.products) {
         console.log('✅ Processing', inventoryData.products.length, 'inventory items');
-        const convertedInventory = inventoryData.products.map((product: any) => ({
+        // Square products are already in the right format, just use them directly
+        setInventoryData(inventoryData.products.map((product: any) => ({
           itemName: product.name,
           currentStock: product.currentStock,
-          category: 'wine' as const // Default category for Square items
-        }));
-        setInventoryData(convertedInventory);
-        localStorage.setItem('inventoryData', JSON.stringify(convertedInventory));
-        console.log('✅ Inventory data saved:', convertedInventory);
+          category: product.category === 'General' ? 'wine' : product.category // Map General to wine for display
+        })));
+        localStorage.setItem('inventoryData', JSON.stringify(inventoryData.products.map((product: any) => ({
+          itemName: product.name,
+          currentStock: product.currentStock,
+          category: product.category === 'General' ? 'wine' : product.category
+        }))));
+        console.log('✅ Inventory data saved');
       } else {
         console.log('⚠️ No inventory products found');
       }
