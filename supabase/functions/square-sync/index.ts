@@ -92,16 +92,31 @@ serve(async (req) => {
         // Get catalog items to map item names
         const catalogResponse = await fetch(`${SQUARE_BASE_URL}/catalog/list?types=ITEM`, { headers });
         const catalogData = await catalogResponse.json();
+        console.log('Catalog response:', catalogData);
         
         const itemMap = new Map();
-        catalogData.objects?.forEach((item: any) => {
-          if (item.type === 'ITEM') {
-            itemMap.set(item.id, item.item_data?.name || 'Unknown Item');
-          }
-        });
+        if (catalogData.objects) {
+          catalogData.objects.forEach((item: any) => {
+            if (item.type === 'ITEM' && item.item_data) {
+              // Map both the item ID and variation IDs to the item name
+              itemMap.set(item.id, item.item_data.name || 'Unknown Item');
+              
+              // Also map variation IDs to the item name
+              if (item.item_data.variations) {
+                item.item_data.variations.forEach((variation: any) => {
+                  itemMap.set(variation.id, item.item_data.name || 'Unknown Item');
+                });
+              }
+            }
+          });
+        }
+        
+        console.log('Item map size:', itemMap.size);
+        console.log('Sample mappings:', Array.from(itemMap.entries()).slice(0, 10));
 
         const inventory = inventoryData.counts?.map((count: any) => {
           const itemName = itemMap.get(count.catalog_object_id) || 'Unknown Item';
+          console.log(`Mapping ${count.catalog_object_id} to "${itemName}"`);
           return {
             itemName,
             currentStock: parseInt(count.quantity) || 0,
