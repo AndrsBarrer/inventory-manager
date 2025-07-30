@@ -41,8 +41,22 @@ serve(async (req) => {
 
     switch (action) {
       case 'locations':
-        const locationsResponse = await fetch(`${SQUARE_BASE_URL}/locations`, { headers });
+        console.log('Making Square API call for locations');
+        const locationsResponse = await fetch(`${SQUARE_BASE_URL}/locations`, { 
+          headers,
+          method: 'GET'
+        });
+        
+        console.log('Square API response status:', locationsResponse.status);
+        
+        if (!locationsResponse.ok) {
+          const errorText = await locationsResponse.text();
+          console.error('Square API error:', errorText);
+          throw new Error(`Square API error: ${locationsResponse.status} - ${errorText}`);
+        }
+        
         const locationsData = await locationsResponse.json();
+        console.log('Square locations data:', locationsData);
         
         const locations = locationsData.locations?.map((loc: any) => ({
           id: loc.id,
@@ -51,6 +65,8 @@ serve(async (req) => {
           status: loc.status === 'ACTIVE' ? 'active' : 'inactive',
           squareLocationId: loc.id
         })) || [];
+
+        console.log('Processed locations:', locations);
 
         return new Response(JSON.stringify({ locations }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
