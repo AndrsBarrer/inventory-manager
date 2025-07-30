@@ -15,9 +15,9 @@ serve(async (req) => {
   }
 
   try {
-    const url = new URL(req.url);
-    const action = url.searchParams.get('action');
-    const locationId = url.searchParams.get('locationId');
+    const requestBody = await req.json();
+    const action = requestBody.action;
+    const locationId = requestBody.locationId;
 
     if (!SQUARE_ACCESS_TOKEN) {
       throw new Error('Square access token not configured');
