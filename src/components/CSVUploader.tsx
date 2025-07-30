@@ -127,6 +127,50 @@ export const CSVUploader: React.FC<CSVUploaderProps> = ({
     }
   };
 
+  // Process Square inventory data (already structured objects)
+  const processSquareInventoryData = (inventoryData: any[]): InventoryRecord[] => {
+    console.log('=== PROCESSING SQUARE INVENTORY DATA ===');
+    console.log('Raw inventory data:', inventoryData);
+    
+    const processed = inventoryData
+      .filter(item => item && item.itemName && typeof item.currentStock === 'number')
+      .map(item => {
+        const record: InventoryRecord = {
+          itemName: item.itemName || 'Unknown Item',
+          currentStock: item.currentStock || 0,
+          category: (['beer', 'wine', 'cigarettes'].includes(item.category?.toLowerCase())) 
+            ? item.category.toLowerCase() as 'beer' | 'wine' | 'cigarettes'
+            : 'beer' // Default category
+        };
+        return record;
+      });
+    
+    console.log('Processed inventory records:', processed.length);
+    console.log('First processed record:', processed[0]);
+    return processed;
+  };
+
+  // Process Square sales data (already structured objects)
+  const processSquareSalesData = (salesData: any[]): SalesRecord[] => {
+    console.log('=== PROCESSING SQUARE SALES DATA ===');
+    console.log('Raw sales data:', salesData);
+    
+    const processed = salesData
+      .filter(item => item && item.itemName && item.datetime)
+      .map(item => {
+        const record: SalesRecord = {
+          datetime: item.datetime || new Date().toISOString(),
+          itemName: item.itemName || 'Unknown Item',
+          quantitySold: parseInt(item.quantitySold?.toString()) || 0
+        };
+        return record;
+      });
+    
+    console.log('Processed sales records:', processed.length);
+    console.log('First processed record:', processed[0]);
+    return processed;
+  };
+
   const handleSquareSync = async () => {
     if (!selectedLocation || selectedLocation.status !== 'active') {
       toast({
@@ -166,29 +210,21 @@ export const CSVUploader: React.FC<CSVUploaderProps> = ({
         throw salesResponse.error;
       }
 
-      // Update the app with Square data
+      // Process Square data (structured objects, not CSV)
       if (inventoryResponse.data?.inventory) {
-        console.log('=== PROCESSING INVENTORY DATA ===');
-        console.log('Inventory array length:', inventoryResponse.data.inventory.length);
-        console.log('First inventory item:', inventoryResponse.data.inventory[0]);
-        console.log('Calling onInventoryDataUpload with data...');
-        
-        onInventoryDataUpload(inventoryResponse.data.inventory);
+        const processedInventory = processSquareInventoryData(inventoryResponse.data.inventory);
+        onInventoryDataUpload(processedInventory);
         setInventoryUploaded(true);
-        console.log('onInventoryDataUpload called, setInventoryUploaded(true) called');
+        console.log('Square inventory processed and uploaded');
       } else {
         console.log('No inventory data in response:', inventoryResponse.data);
       }
 
       if (salesResponse.data?.sales) {
-        console.log('=== PROCESSING SALES DATA ===');
-        console.log('Sales array length:', salesResponse.data.sales.length);
-        console.log('First sales item:', salesResponse.data.sales[0]);
-        console.log('Calling onSalesDataUpload with data...');
-        
-        onSalesDataUpload(salesResponse.data.sales);
+        const processedSales = processSquareSalesData(salesResponse.data.sales);
+        onSalesDataUpload(processedSales);
         setSalesUploaded(true);
-        console.log('onSalesDataUpload called, setSalesUploaded(true) called');
+        console.log('Square sales processed and uploaded');
       } else {
         console.log('No sales data in response:', salesResponse.data);
       }
