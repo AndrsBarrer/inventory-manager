@@ -150,22 +150,26 @@ serve(async (req) => {
           // Try variation mapping first, then item mapping, then default
           let itemName = variationToItemMap.get(count.catalog_object_id) || 
                         itemMap.get(count.catalog_object_id) || 
-                        'Unknown Item';
+                        `Item-${count.catalog_object_id}`;
           
-          console.log(`Mapping ${count.catalog_object_id} to "${itemName}" (stock: ${count.quantity})`);
+          const stockCount = parseInt(count.quantity) || 0;
+          console.log(`Processing: ${count.catalog_object_id} -> "${itemName}" (stock: ${stockCount})`);
           
-          // Skip items with no stock or unknown names for cleaner data
-          if (itemName === 'Unknown Item' || !count.quantity || parseInt(count.quantity) <= 0) {
-            console.log(`Skipping item: ${itemName} (stock: ${count.quantity})`);
+          // Only skip items with completely unknown names AND no stock
+          if (itemName === `Item-${count.catalog_object_id}` && stockCount <= 0) {
+            console.log(`Skipping unmapped item with no stock: ${count.catalog_object_id}`);
             return null;
           }
           
           return {
             itemName,
-            currentStock: parseInt(count.quantity) || 0,
+            currentStock: stockCount,
             category: guessCategory(itemName)
           };
         }).filter(item => item !== null) || [];
+
+        console.log(`Final inventory array length: ${inventory.length}`);
+        console.log('Sample inventory items:', inventory.slice(0, 3));
 
         return new Response(JSON.stringify({ inventory }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }

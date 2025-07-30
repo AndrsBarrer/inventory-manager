@@ -41,11 +41,7 @@ export const SquareSyncTab: React.FC<SquareSyncTabProps> = ({
     
     const processed = inventoryData
       .filter(item => {
-        const isValid = item && 
-                       item.itemName && 
-                       item.itemName !== 'Unknown Item' && 
-                       typeof item.currentStock === 'number' && 
-                       item.currentStock > 0;
+        const isValid = item && item.itemName && typeof item.currentStock === 'number';
         
         if (!isValid) {
           console.log('Filtering out invalid item:', item);
