@@ -90,32 +90,40 @@ serve(async (req) => {
         console.log('Square inventory response:', inventoryData);
 
         // Get catalog items to map item names
-        const catalogResponse = await fetch(`${SQUARE_BASE_URL}/catalog/list?types=ITEM`, { headers });
+        const catalogResponse = await fetch(`${SQUARE_BASE_URL}/catalog/list?types=ITEM,ITEM_VARIATION`, { headers });
         const catalogData = await catalogResponse.json();
-        console.log('Catalog response:', catalogData);
+        console.log('Catalog response objects count:', catalogData.objects?.length);
         
         const itemMap = new Map();
+        const variationToItemMap = new Map();
+        
         if (catalogData.objects) {
-          catalogData.objects.forEach((item: any) => {
-            if (item.type === 'ITEM' && item.item_data) {
-              // Map both the item ID and variation IDs to the item name
-              itemMap.set(item.id, item.item_data.name || 'Unknown Item');
-              
-              // Also map variation IDs to the item name
-              if (item.item_data.variations) {
-                item.item_data.variations.forEach((variation: any) => {
-                  itemMap.set(variation.id, item.item_data.name || 'Unknown Item');
-                });
-              }
+          // First pass: Map all items
+          catalogData.objects.forEach((obj: any) => {
+            if (obj.type === 'ITEM' && obj.item_data) {
+              itemMap.set(obj.id, obj.item_data.name || 'Unknown Item');
+            }
+          });
+          
+          // Second pass: Map all variations to their parent items
+          catalogData.objects.forEach((obj: any) => {
+            if (obj.type === 'ITEM_VARIATION' && obj.item_variation_data) {
+              const itemId = obj.item_variation_data.item_id;
+              const itemName = itemMap.get(itemId) || 'Unknown Item';
+              variationToItemMap.set(obj.id, itemName);
             }
           });
         }
         
         console.log('Item map size:', itemMap.size);
-        console.log('Sample mappings:', Array.from(itemMap.entries()).slice(0, 10));
+        console.log('Variation map size:', variationToItemMap.size);
+        console.log('Sample variation mappings:', Array.from(variationToItemMap.entries()).slice(0, 10));
 
         const inventory = inventoryData.counts?.map((count: any) => {
-          const itemName = itemMap.get(count.catalog_object_id) || 'Unknown Item';
+          // Try variation mapping first, then item mapping, then default
+          const itemName = variationToItemMap.get(count.catalog_object_id) || 
+                          itemMap.get(count.catalog_object_id) || 
+                          'Unknown Item';
           console.log(`Mapping ${count.catalog_object_id} to "${itemName}"`);
           return {
             itemName,
