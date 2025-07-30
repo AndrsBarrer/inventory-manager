@@ -15,23 +15,34 @@ serve(async (req) => {
   }
 
   try {
+    console.log('Request method:', req.method);
+    console.log('Request URL:', req.url);
+    
     let action, locationId;
     
     // Try to get parameters from request body first, then fall back to URL params
     try {
       const requestBody = await req.json();
+      console.log('Request body:', requestBody);
       action = requestBody.action;
       locationId = requestBody.locationId;
-    } catch {
+    } catch (bodyError) {
+      console.log('Failed to parse JSON body:', bodyError.message);
       // If no JSON body, try URL parameters
       const url = new URL(req.url);
       action = url.searchParams.get('action');
       locationId = url.searchParams.get('locationId');
     }
 
+    console.log('Action:', action);
+    console.log('Location ID:', locationId);
+
     if (!SQUARE_ACCESS_TOKEN) {
+      console.error('Square access token not configured');
       throw new Error('Square access token not configured');
     }
+
+    console.log('Square token exists:', !!SQUARE_ACCESS_TOKEN);
 
     const headers = {
       'Authorization': `Bearer ${SQUARE_ACCESS_TOKEN}`,
