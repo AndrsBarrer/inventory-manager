@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { AlertTriangle, Package, ShoppingCart, TrendingDown, RefreshCw, Search } from 'lucide-react';
 import { ProductList } from './ProductList';
 import { ReorderDialog } from './ReorderDialog';
-import { CSVUploader } from './CSVUploader';
+import { InventoryTabs } from './InventoryTabs';
 import { LocationSelector, Location } from './LocationSelector';
 
 import { SalesBasedOrderSuggestion, CategoryOrder } from './SalesBasedOrderSuggestion';
@@ -234,11 +234,11 @@ export const InventoryDashboard: React.FC = () => {
       />
 
       {/* CSV Upload Section */}
-      <CSVUploader 
-        onSalesDataUpload={handleSalesDataUpload}
-        onInventoryDataUpload={handleInventoryDataUpload}
-        selectedLocation={selectedLocation}
-      />
+        <InventoryTabs 
+          onSalesDataUpload={handleSalesDataUpload}
+          onInventoryDataUpload={handleInventoryDataUpload}
+          selectedLocation={selectedLocation}
+        />
 
 
       {/* Summary Cards */}
