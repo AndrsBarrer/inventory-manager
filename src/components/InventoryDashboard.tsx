@@ -181,6 +181,7 @@ export const InventoryDashboard: React.FC = () => {
     console.log('=== INVENTORY DATA UPLOADED ===');
     console.log('Inventory data received:', data);
     console.log('Inventory data length:', data.length);
+    console.log('Sample items:', data.slice(0, 5));
     setInventoryData(data);
     localStorage.setItem('inventoryData', JSON.stringify(data));
   };
