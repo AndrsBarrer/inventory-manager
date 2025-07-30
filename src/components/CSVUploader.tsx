@@ -139,38 +139,58 @@ export const CSVUploader: React.FC<CSVUploaderProps> = ({
 
     setSquareSyncing(true);
     try {
+      console.log('=== STARTING SQUARE SYNC ===');
+      console.log('Selected location:', selectedLocation);
+      
       // Sync inventory
+      console.log('Calling Square sync for inventory...');
       const inventoryResponse = await supabase.functions.invoke('square-sync', {
         body: { action: 'inventory', locationId: selectedLocation.squareLocationId }
       });
 
-      if (inventoryResponse.error) throw inventoryResponse.error;
+      console.log('Inventory response:', inventoryResponse);
+      if (inventoryResponse.error) {
+        console.error('Inventory sync error:', inventoryResponse.error);
+        throw inventoryResponse.error;
+      }
 
       // Sync sales data
+      console.log('Calling Square sync for sales...');
       const salesResponse = await supabase.functions.invoke('square-sync', {
         body: { action: 'sales', locationId: selectedLocation.squareLocationId }
       });
 
-      if (salesResponse.error) throw salesResponse.error;
+      console.log('Sales response:', salesResponse);
+      if (salesResponse.error) {
+        console.error('Sales sync error:', salesResponse.error);
+        throw salesResponse.error;
+      }
 
       // Update the app with Square data
       if (inventoryResponse.data?.inventory) {
-        console.log('=== SQUARE INVENTORY DATA ===');
-        console.log('Raw Square inventory data:', inventoryResponse.data.inventory);
-        console.log('First 5 items:', inventoryResponse.data.inventory.slice(0, 5));
-        console.log('Data type check:', typeof inventoryResponse.data.inventory[0]);
+        console.log('=== PROCESSING INVENTORY DATA ===');
+        console.log('Inventory array length:', inventoryResponse.data.inventory.length);
+        console.log('First inventory item:', inventoryResponse.data.inventory[0]);
+        console.log('Calling onInventoryDataUpload with data...');
         
         onInventoryDataUpload(inventoryResponse.data.inventory);
         setInventoryUploaded(true);
+        console.log('onInventoryDataUpload called, setInventoryUploaded(true) called');
+      } else {
+        console.log('No inventory data in response:', inventoryResponse.data);
       }
 
       if (salesResponse.data?.sales) {
-        console.log('=== SQUARE SALES DATA ===');
-        console.log('Raw Square sales data:', salesResponse.data.sales);
-        console.log('First 5 sales:', salesResponse.data.sales.slice(0, 5));
+        console.log('=== PROCESSING SALES DATA ===');
+        console.log('Sales array length:', salesResponse.data.sales.length);
+        console.log('First sales item:', salesResponse.data.sales[0]);
+        console.log('Calling onSalesDataUpload with data...');
         
         onSalesDataUpload(salesResponse.data.sales);
         setSalesUploaded(true);
+        console.log('onSalesDataUpload called, setSalesUploaded(true) called');
+      } else {
+        console.log('No sales data in response:', salesResponse.data);
       }
 
       toast({
