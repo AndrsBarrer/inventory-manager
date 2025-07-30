@@ -155,11 +155,20 @@ export const CSVUploader: React.FC<CSVUploaderProps> = ({
 
       // Update the app with Square data
       if (inventoryResponse.data?.inventory) {
+        console.log('=== SQUARE INVENTORY DATA ===');
+        console.log('Raw Square inventory data:', inventoryResponse.data.inventory);
+        console.log('First 5 items:', inventoryResponse.data.inventory.slice(0, 5));
+        console.log('Data type check:', typeof inventoryResponse.data.inventory[0]);
+        
         onInventoryDataUpload(inventoryResponse.data.inventory);
         setInventoryUploaded(true);
       }
 
       if (salesResponse.data?.sales) {
+        console.log('=== SQUARE SALES DATA ===');
+        console.log('Raw Square sales data:', salesResponse.data.sales);
+        console.log('First 5 sales:', salesResponse.data.sales.slice(0, 5));
+        
         onSalesDataUpload(salesResponse.data.sales);
         setSalesUploaded(true);
       }
