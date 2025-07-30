@@ -147,12 +147,23 @@ serve(async (req) => {
         const salesData = await salesResponse.json();
         console.log('Square sales response:', salesData);
 
+        // Get catalog items to map item names for sales
+        const salesCatalogResponse = await fetch(`${SQUARE_BASE_URL}/catalog/list?types=ITEM`, { headers });
+        const salesCatalogData = await salesCatalogResponse.json();
+        
+        const salesItemMap = new Map();
+        salesCatalogData.objects?.forEach((item: any) => {
+          if (item.type === 'ITEM') {
+            salesItemMap.set(item.id, item.item_data?.name || 'Unknown Item');
+          }
+        });
+
         const sales: any[] = [];
         
         salesData.orders?.forEach((order: any) => {
           order.line_items?.forEach((lineItem: any) => {
             if (lineItem.catalog_object_id) {
-              const itemName = itemMap.get(lineItem.catalog_object_id) || 'Unknown Item';
+              const itemName = salesItemMap.get(lineItem.catalog_object_id) || 'Unknown Item';
               sales.push({
                 datetime: order.created_at,
                 itemName,
