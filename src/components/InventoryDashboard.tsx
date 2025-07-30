@@ -107,16 +107,33 @@ interface InventoryRecord {
 export const InventoryDashboard: React.FC = () => {
   const [salesData, setSalesData] = useState<SalesRecord[]>(() => {
     const saved = localStorage.getItem('salesData');
+    console.log('Initial salesData from localStorage:', saved);
     return saved ? JSON.parse(saved) : [];
   });
   const [inventoryData, setInventoryData] = useState<InventoryRecord[]>(() => {
     const saved = localStorage.getItem('inventoryData');
-    return saved ? JSON.parse(saved) : [];
+    console.log('Initial inventoryData from localStorage:', saved);
+    const parsed = saved ? JSON.parse(saved) : [];
+    console.log('Parsed inventoryData length:', parsed.length);
+    return parsed;
   });
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isReorderDialogOpen, setIsReorderDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
+
+  // Add useEffect to debug state changes
+  useEffect(() => {
+    console.log('=== INVENTORY DATA STATE CHANGED ===');
+    console.log('Current inventoryData state:', inventoryData);
+    console.log('Current inventoryData length:', inventoryData.length);
+  }, [inventoryData]);
+
+  useEffect(() => {
+    console.log('=== SALES DATA STATE CHANGED ===');
+    console.log('Current salesData state:', salesData);
+    console.log('Current salesData length:', salesData.length);
+  }, [salesData]);
 
 
   // Convert uploaded inventory data to Product format for display
