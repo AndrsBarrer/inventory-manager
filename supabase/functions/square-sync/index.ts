@@ -7,7 +7,9 @@ const corsHeaders = {
 };
 
 const SQUARE_ACCESS_TOKEN = Deno.env.get('SQUARE_ACCESS_TOKEN');
-const SQUARE_BASE_URL = 'https://connect.squareup.com/v2';
+const SQUARE_BASE_URL = SQUARE_ACCESS_TOKEN?.startsWith('EAAAL') 
+  ? 'https://connect.squareupsandbox.com/v2' 
+  : 'https://connect.squareup.com/v2';
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
