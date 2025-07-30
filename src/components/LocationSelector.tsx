@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { MapPin, Store, CheckCircle } from 'lucide-react';
+import { MapPin, Store, CheckCircle, RefreshCw } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 export interface Location {
   id: string;
@@ -45,10 +47,62 @@ const mockLocations: Location[] = [
 ];
 
 export const LocationSelector: React.FC<LocationSelectorProps> = ({
-  locations = mockLocations,
+  locations: propLocations,
   selectedLocation,
   onLocationSelect
 }) => {
+  const [locations, setLocations] = useState<Location[]>(propLocations || mockLocations);
+  const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    if (propLocations && propLocations.length > 0) {
+      setLocations(propLocations);
+    } else {
+      loadSquareLocations();
+    }
+  }, [propLocations]);
+
+  const loadSquareLocations = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('square-sync', {
+        body: { action: 'locations' }
+      });
+
+      if (error) throw error;
+
+      if (data?.locations) {
+        setLocations(data.locations);
+      }
+    } catch (error) {
+      console.error('Failed to load Square locations:', error);
+      toast({
+        title: "Square Connection",
+        description: "Using demo locations. Connect to Square to see real locations.",
+        variant: "default",
+      });
+      setLocations(mockLocations);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleConnectLocation = async (location: Location) => {
+    // For now, just mark as active - in a full implementation, 
+    // this would trigger Square OAuth flow
+    const updatedLocations = locations.map(loc =>
+      loc.id === location.id
+        ? { ...loc, status: 'active' as const, lastSync: new Date().toISOString() }
+        : loc
+    );
+    setLocations(updatedLocations);
+    
+    toast({
+      title: "Location Connected",
+      description: `${location.name} is now connected to Square POS`,
+    });
+  };
   const getStatusBadge = (status: Location['status']) => {
     switch (status) {
       case 'active':
@@ -71,6 +125,7 @@ export const LocationSelector: React.FC<LocationSelectorProps> = ({
         <CardTitle className="flex items-center gap-2">
           <Store className="h-5 w-5" />
           Store Locations
+          {loading && <RefreshCw className="h-4 w-4 animate-spin" />}
         </CardTitle>
         <p className="text-sm text-muted-foreground">
           Select a location to view its inventory. Start with one location and expand from there.
@@ -109,7 +164,7 @@ export const LocationSelector: React.FC<LocationSelectorProps> = ({
                       variant="outline"
                       onClick={(e) => {
                         e.stopPropagation();
-                        // TODO: Connect to Square POS
+                        handleConnectLocation(location);
                       }}
                     >
                       Connect

@@ -7,6 +7,7 @@ import { AlertTriangle, Package, ShoppingCart, TrendingDown, RefreshCw, Search }
 import { ProductList } from './ProductList';
 import { ReorderDialog } from './ReorderDialog';
 import { CSVUploader } from './CSVUploader';
+import { LocationSelector, Location } from './LocationSelector';
 
 import { SalesBasedOrderSuggestion, CategoryOrder } from './SalesBasedOrderSuggestion';
 
@@ -115,6 +116,7 @@ export const InventoryDashboard: React.FC = () => {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isReorderDialogOpen, setIsReorderDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
 
 
   // Convert uploaded inventory data to Product format for display
@@ -199,6 +201,12 @@ export const InventoryDashboard: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* Location Selector */}
+      <LocationSelector
+        locations={[]}
+        selectedLocation={selectedLocation}
+        onLocationSelect={setSelectedLocation}
+      />
 
       {/* Sales-Based Order Suggestions - Moved up per user request */}
       <SalesBasedOrderSuggestion
@@ -211,6 +219,7 @@ export const InventoryDashboard: React.FC = () => {
       <CSVUploader 
         onSalesDataUpload={handleSalesDataUpload}
         onInventoryDataUpload={handleInventoryDataUpload}
+        selectedLocation={selectedLocation}
       />
 
 
