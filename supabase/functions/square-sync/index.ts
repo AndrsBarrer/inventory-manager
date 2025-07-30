@@ -89,8 +89,8 @@ serve(async (req) => {
         const inventoryData = await inventoryResponse.json();
         console.log('Square inventory response:', inventoryData);
 
-        // Get catalog items to map item names
-        const catalogResponse = await fetch(`${SQUARE_BASE_URL}/catalog/list?types=ITEM,ITEM_VARIATION`, { headers });
+        // Get catalog items to map item names - fetch ALL catalog objects
+        const catalogResponse = await fetch(`${SQUARE_BASE_URL}/catalog/list`, { headers });
         const catalogData = await catalogResponse.json();
         console.log('Catalog response objects count:', catalogData.objects?.length);
         
@@ -98,10 +98,11 @@ serve(async (req) => {
         const variationToItemMap = new Map();
         
         if (catalogData.objects) {
-          // First pass: Map all items
+          // First pass: Map all items by ID
           catalogData.objects.forEach((obj: any) => {
-            if (obj.type === 'ITEM' && obj.item_data) {
-              itemMap.set(obj.id, obj.item_data.name || 'Unknown Item');
+            if (obj.type === 'ITEM' && obj.item_data?.name) {
+              itemMap.set(obj.id, obj.item_data.name);
+              console.log(`Mapped ITEM ${obj.id} to "${obj.item_data.name}"`);
             }
           });
           
@@ -109,22 +110,36 @@ serve(async (req) => {
           catalogData.objects.forEach((obj: any) => {
             if (obj.type === 'ITEM_VARIATION' && obj.item_variation_data) {
               const itemId = obj.item_variation_data.item_id;
-              const itemName = itemMap.get(itemId) || 'Unknown Item';
-              variationToItemMap.set(obj.id, itemName);
+              const itemName = itemMap.get(itemId);
+              if (itemName) {
+                variationToItemMap.set(obj.id, itemName);
+                console.log(`Mapped VARIATION ${obj.id} to "${itemName}"`);
+              }
+            }
+          });
+          
+          // Third pass: Also map variations directly if they have names
+          catalogData.objects.forEach((obj: any) => {
+            if (obj.type === 'ITEM_VARIATION' && obj.item_variation_data?.name) {
+              const parentItemName = itemMap.get(obj.item_variation_data.item_id);
+              const variationName = `${parentItemName || 'Unknown Item'} ${obj.item_variation_data.name}`.trim();
+              variationToItemMap.set(obj.id, variationName);
+              console.log(`Mapped VARIATION with name ${obj.id} to "${variationName}"`);
             }
           });
         }
         
         console.log('Item map size:', itemMap.size);
         console.log('Variation map size:', variationToItemMap.size);
-        console.log('Sample variation mappings:', Array.from(variationToItemMap.entries()).slice(0, 10));
 
         const inventory = inventoryData.counts?.map((count: any) => {
           // Try variation mapping first, then item mapping, then default
-          const itemName = variationToItemMap.get(count.catalog_object_id) || 
-                          itemMap.get(count.catalog_object_id) || 
-                          'Unknown Item';
+          let itemName = variationToItemMap.get(count.catalog_object_id) || 
+                        itemMap.get(count.catalog_object_id) || 
+                        'Unknown Item';
+          
           console.log(`Mapping ${count.catalog_object_id} to "${itemName}"`);
+          
           return {
             itemName,
             currentStock: parseInt(count.quantity) || 0,
@@ -170,23 +185,44 @@ serve(async (req) => {
         const salesData = await salesResponse.json();
         console.log('Square sales response:', salesData);
 
-        // Get catalog items to map item names for sales
-        const salesCatalogResponse = await fetch(`${SQUARE_BASE_URL}/catalog/list?types=ITEM`, { headers });
+        // Get catalog items to map item names for sales - reuse the same catalog data
+        const salesCatalogResponse = await fetch(`${SQUARE_BASE_URL}/catalog/list`, { headers });
         const salesCatalogData = await salesCatalogResponse.json();
         
         const salesItemMap = new Map();
-        salesCatalogData.objects?.forEach((item: any) => {
-          if (item.type === 'ITEM') {
-            salesItemMap.set(item.id, item.item_data?.name || 'Unknown Item');
-          }
-        });
+        const salesVariationMap = new Map();
+        
+        if (salesCatalogData.objects) {
+          // Map items
+          salesCatalogData.objects.forEach((obj: any) => {
+            if (obj.type === 'ITEM' && obj.item_data?.name) {
+              salesItemMap.set(obj.id, obj.item_data.name);
+            }
+          });
+          
+          // Map variations to items
+          salesCatalogData.objects.forEach((obj: any) => {
+            if (obj.type === 'ITEM_VARIATION' && obj.item_variation_data) {
+              const itemId = obj.item_variation_data.item_id;
+              const itemName = salesItemMap.get(itemId);
+              if (itemName) {
+                const variationName = obj.item_variation_data.name ? 
+                  `${itemName} ${obj.item_variation_data.name}`.trim() : itemName;
+                salesVariationMap.set(obj.id, variationName);
+              }
+            }
+          });
+        }
 
         const sales: any[] = [];
         
         salesData.orders?.forEach((order: any) => {
           order.line_items?.forEach((lineItem: any) => {
             if (lineItem.catalog_object_id) {
-              const itemName = salesItemMap.get(lineItem.catalog_object_id) || 'Unknown Item';
+              const itemName = salesVariationMap.get(lineItem.catalog_object_id) || 
+                              salesItemMap.get(lineItem.catalog_object_id) || 
+                              lineItem.name || 
+                              'Unknown Item';
               sales.push({
                 datetime: order.created_at,
                 itemName,
