@@ -40,20 +40,31 @@ export const SquareSyncTab: React.FC<SquareSyncTabProps> = ({
     console.log('Raw inventory data:', inventoryData);
     
     const processed = inventoryData
-      .filter(item => item && item.itemName && typeof item.currentStock === 'number')
+      .filter(item => {
+        const isValid = item && 
+                       item.itemName && 
+                       item.itemName !== 'Unknown Item' && 
+                       typeof item.currentStock === 'number' && 
+                       item.currentStock > 0;
+        
+        if (!isValid) {
+          console.log('Filtering out invalid item:', item);
+        }
+        return isValid;
+      })
       .map(item => {
         const record: InventoryRecord = {
-          itemName: item.itemName || 'Unknown Item',
-          currentStock: item.currentStock || 0,
+          itemName: item.itemName,
+          currentStock: item.currentStock,
           category: (['beer', 'wine', 'cigarettes'].includes(item.category?.toLowerCase())) 
             ? item.category.toLowerCase() as 'beer' | 'wine' | 'cigarettes'
-            : 'beer' // Default category
+            : 'beer'
         };
+        console.log('Creating inventory record:', record);
         return record;
       });
     
-    console.log('Parsed inventory records:', processed.length);
-    console.log('First parsed record:', processed[0]);
+    console.log(`Successfully parsed ${processed.length} valid inventory records`);
     return processed;
   };
 

@@ -132,20 +132,40 @@ serve(async (req) => {
         console.log('Item map size:', itemMap.size);
         console.log('Variation map size:', variationToItemMap.size);
 
+        // Helper function to guess category from item name
+        const guessCategory = (name: string): 'beer' | 'wine' | 'cigarettes' => {
+          const lowerName = name.toLowerCase();
+          if (lowerName.includes('wine') || lowerName.includes('chardonnay') || lowerName.includes('cabernet') || 
+              lowerName.includes('merlot') || lowerName.includes('pinot') || lowerName.includes('sauvignon')) {
+            return 'wine';
+          }
+          if (lowerName.includes('marlboro') || lowerName.includes('newport') || lowerName.includes('camel') ||
+              lowerName.includes('cigarette') || lowerName.includes('king')) {
+            return 'cigarettes';
+          }
+          return 'beer'; // Default to beer for beverages
+        };
+
         const inventory = inventoryData.counts?.map((count: any) => {
           // Try variation mapping first, then item mapping, then default
           let itemName = variationToItemMap.get(count.catalog_object_id) || 
                         itemMap.get(count.catalog_object_id) || 
                         'Unknown Item';
           
-          console.log(`Mapping ${count.catalog_object_id} to "${itemName}"`);
+          console.log(`Mapping ${count.catalog_object_id} to "${itemName}" (stock: ${count.quantity})`);
+          
+          // Skip items with no stock or unknown names for cleaner data
+          if (itemName === 'Unknown Item' || !count.quantity || parseInt(count.quantity) <= 0) {
+            console.log(`Skipping item: ${itemName} (stock: ${count.quantity})`);
+            return null;
+          }
           
           return {
             itemName,
             currentStock: parseInt(count.quantity) || 0,
-            category: 'beer' as const // Default category, can be enhanced later
+            category: guessCategory(itemName)
           };
-        }) || [];
+        }).filter(item => item !== null) || [];
 
         return new Response(JSON.stringify({ inventory }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
