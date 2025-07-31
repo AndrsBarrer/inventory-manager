@@ -94,37 +94,61 @@ serve(async (req) => {
         const catalogData = await catalogResponse.json();
         console.log('Catalog response objects count:', catalogData.objects?.length);
         
+        // Enhanced debugging: show full structure of first few catalog objects
+        if (catalogData.objects?.length > 0) {
+          console.log('Full catalog object structure sample:', JSON.stringify(catalogData.objects.slice(0, 2), null, 2));
+        }
+        
         const itemMap = new Map();
         const variationToItemMap = new Map();
         
         if (catalogData.objects) {
-          // First pass: Map all items by ID
-          catalogData.objects.forEach((obj: any) => {
-            if (obj.type === 'ITEM' && obj.item_data?.name) {
-              itemMap.set(obj.id, obj.item_data.name);
-              console.log(`Mapped ITEM ${obj.id} to "${obj.item_data.name}"`);
-            }
-          });
-          
-          // Second pass: Map all variations to their parent items
-          catalogData.objects.forEach((obj: any) => {
-            if (obj.type === 'ITEM_VARIATION' && obj.item_variation_data) {
-              const itemId = obj.item_variation_data.item_id;
-              const itemName = itemMap.get(itemId);
+          // First pass: Map all items by ID with enhanced name extraction
+          catalogData.objects.forEach((obj: any, index: number) => {
+            if (obj.type === 'ITEM' && obj.item_data) {
+              // Try multiple fields to find the real item name
+              let itemName = obj.item_data.name;
+              
+              // Check if we have a better name in other fields
+              if (obj.item_data.description && obj.item_data.description.length < obj.item_data.name?.length) {
+                itemName = obj.item_data.description;
+              }
+              
+              // Skip if name looks like a token/ID (long random strings)
+              if (itemName && (itemName.length > 50 || /^[A-Z0-9]{20,}$/.test(itemName))) {
+                console.log(`Skipping token-like name for ${obj.id}: "${itemName}"`);
+                return;
+              }
+              
               if (itemName) {
-                variationToItemMap.set(obj.id, itemName);
-                console.log(`Mapped VARIATION ${obj.id} to "${itemName}"`);
+                itemMap.set(obj.id, itemName);
+                if (index < 5) {
+                  console.log(`Mapped ITEM ${obj.id} to "${itemName}" (from ${obj.item_data.name ? 'name' : 'description'})`);
+                }
               }
             }
           });
           
-          // Third pass: Also map variations directly if they have names
-          catalogData.objects.forEach((obj: any) => {
-            if (obj.type === 'ITEM_VARIATION' && obj.item_variation_data?.name) {
-              const parentItemName = itemMap.get(obj.item_variation_data.item_id);
-              const variationName = `${parentItemName || 'Unknown Item'} ${obj.item_variation_data.name}`.trim();
-              variationToItemMap.set(obj.id, variationName);
-              console.log(`Mapped VARIATION with name ${obj.id} to "${variationName}"`);
+          // Second pass: Map all variations to their parent items
+          catalogData.objects.forEach((obj: any, index: number) => {
+            if (obj.type === 'ITEM_VARIATION' && obj.item_variation_data) {
+              const itemId = obj.item_variation_data.item_id;
+              const itemName = itemMap.get(itemId);
+              
+              if (itemName) {
+                // Use variation name if it's meaningful, otherwise just use item name
+                let finalName = itemName;
+                const variationName = obj.item_variation_data.name;
+                
+                if (variationName && variationName !== 'Regular' && variationName !== itemName && variationName.length < 50) {
+                  finalName = `${itemName} - ${variationName}`;
+                }
+                
+                variationToItemMap.set(obj.id, finalName);
+                if (index < 5) {
+                  console.log(`Mapped VARIATION ${obj.id} to "${finalName}"`);
+                }
+              }
             }
           });
         }
