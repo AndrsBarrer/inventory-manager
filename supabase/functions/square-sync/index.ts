@@ -103,30 +103,38 @@ serve(async (req) => {
         const variationToItemMap = new Map();
         
         if (catalogData.objects) {
-          // Map all catalog objects (both items and variations) directly
+          // Build comprehensive mapping in a single pass
           catalogData.objects.forEach((obj: any, index: number) => {
-            let itemName = null;
-            let categoryInfo = null;
-            
-            if (obj.type === 'ITEM' && obj.item_data) {
-              // Extract item name
-              itemName = obj.item_data.name;
-              
-              // Extract category information
-              if (obj.item_data.category_id) {
-                categoryInfo = obj.item_data.category_id;
+            if (obj.type === 'ITEM' && obj.item_data?.name) {
+              // Map items directly
+              itemMap.set(obj.id, { name: obj.item_data.name, category: obj.item_data.category_id });
+              if (index < 15) {
+                console.log(`✓ MAPPED ITEM ${obj.id} -> "${obj.item_data.name}"`);
               }
               
-              if (itemName) {
-                itemMap.set(obj.id, { name: itemName, category: categoryInfo });
-                if (index < 10) {
-                  console.log(`Mapped ITEM ${obj.id} to "${itemName}" (category: ${categoryInfo})`);
-                }
+              // Also map all variations of this item
+              if (obj.item_data.variations) {
+                obj.item_data.variations.forEach((variation: any) => {
+                  if (variation.type === 'ITEM_VARIATION') {
+                    let finalName = obj.item_data.name;
+                    const varName = variation.item_variation_data?.name;
+                    
+                    // Append variation name if meaningful
+                    if (varName && varName !== 'Regular' && varName !== '' && varName !== obj.item_data.name && varName.length < 50) {
+                      finalName = `${obj.item_data.name} - ${varName}`;
+                    }
+                    
+                    variationToItemMap.set(variation.id, { name: finalName, category: obj.item_data.category_id });
+                    if (index < 15) {
+                      console.log(`✓ MAPPED VARIATION ${variation.id} -> "${finalName}"`);
+                    }
+                  }
+                });
               }
             }
             
+            // Handle standalone variations (shouldn't happen but just in case)
             if (obj.type === 'ITEM_VARIATION' && obj.item_variation_data) {
-              // For variations, first check if we have the parent item
               const itemId = obj.item_variation_data.item_id;
               const parentItem = itemMap.get(itemId);
               
@@ -134,23 +142,13 @@ serve(async (req) => {
                 let finalName = parentItem.name;
                 const variationName = obj.item_variation_data.name;
                 
-                // Only append variation name if it's meaningful
                 if (variationName && variationName !== 'Regular' && variationName !== '' && variationName !== parentItem.name && variationName.length < 50) {
                   finalName = `${parentItem.name} - ${variationName}`;
                 }
                 
                 variationToItemMap.set(obj.id, { name: finalName, category: parentItem.category });
-                if (index < 10) {
-                  console.log(`Mapped VARIATION ${obj.id} to "${finalName}" (category: ${parentItem.category})`);
-                }
-              } else {
-                // If no parent item found, try to extract name directly from variation
-                const variationName = obj.item_variation_data.name;
-                if (variationName && variationName !== 'Regular' && variationName !== '') {
-                  variationToItemMap.set(obj.id, { name: variationName, category: null });
-                  if (index < 10) {
-                    console.log(`Mapped VARIATION ${obj.id} to "${variationName}" (no parent item found)`);
-                  }
+                if (index < 15) {
+                  console.log(`✓ MAPPED STANDALONE VARIATION ${obj.id} -> "${finalName}"`);
                 }
               }
             }
