@@ -7,8 +7,6 @@ import { AlertTriangle, Package, ShoppingCart, TrendingDown, RefreshCw, Search }
 import { ProductList } from './ProductList';
 import { ReorderDialog } from './ReorderDialog';
 import { InventoryTabs } from './InventoryTabs';
-import { LocationSelector, Location } from './LocationSelector';
-
 import { SalesBasedOrderSuggestion, CategoryOrder } from './SalesBasedOrderSuggestion';
 
 export interface Product {
@@ -120,7 +118,6 @@ export const InventoryDashboard: React.FC = () => {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isReorderDialogOpen, setIsReorderDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
 
   // Add useEffect to debug state changes
   useEffect(() => {
@@ -219,14 +216,7 @@ export const InventoryDashboard: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Location Selector */}
-      <LocationSelector
-        locations={[]}
-        selectedLocation={selectedLocation}
-        onLocationSelect={setSelectedLocation}
-      />
-
-      {/* Sales-Based Order Suggestions - Moved up per user request */}
+      {/* Sales-Based Order Suggestions */}
       <SalesBasedOrderSuggestion
         salesData={salesData}
         inventoryData={inventoryData}
@@ -234,11 +224,10 @@ export const InventoryDashboard: React.FC = () => {
       />
 
       {/* CSV Upload Section */}
-        <InventoryTabs 
-          onSalesDataUpload={handleSalesDataUpload}
-          onInventoryDataUpload={handleInventoryDataUpload}
-          selectedLocation={selectedLocation}
-        />
+      <InventoryTabs 
+        onSalesDataUpload={handleSalesDataUpload}
+        onInventoryDataUpload={handleInventoryDataUpload}
+      />
 
 
       {/* Summary Cards */}

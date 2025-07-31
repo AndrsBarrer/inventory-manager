@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Upload, FileText, CheckCircle, Loader2, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import type { Location } from './LocationSelector';
+// Location functionality removed
 
 interface SalesRecord {
   datetime: string;
@@ -23,19 +23,16 @@ interface InventoryRecord {
 interface CSVUploaderProps {
   onSalesDataUpload: (data: SalesRecord[]) => void;
   onInventoryDataUpload: (data: InventoryRecord[]) => void;
-  selectedLocation?: Location | null;
 }
 
 export const CSVUploader: React.FC<CSVUploaderProps> = ({
   onSalesDataUpload,
-  onInventoryDataUpload,
-  selectedLocation
+  onInventoryDataUpload
 }) => {
   const [salesFile, setSalesFile] = useState<File | null>(null);
   const [inventoryFile, setInventoryFile] = useState<File | null>(null);
   const [salesUploaded, setSalesUploaded] = useState(false);
   const [inventoryUploaded, setInventoryUploaded] = useState(false);
-  const [squareSyncing, setSquareSyncing] = useState(false);
   const { toast } = useToast();
 
   const parseCSV = (text: string): string[][] => {
@@ -127,168 +124,8 @@ export const CSVUploader: React.FC<CSVUploaderProps> = ({
     }
   };
 
-  // Process Square inventory data (already structured objects)
-  const processSquareInventoryData = (inventoryData: any[]): InventoryRecord[] => {
-    console.log('=== PROCESSING SQUARE INVENTORY DATA ===');
-    console.log('Raw inventory data:', inventoryData);
-    
-    const processed = inventoryData
-      .filter(item => item && item.itemName && typeof item.currentStock === 'number')
-      .map(item => {
-        const record: InventoryRecord = {
-          itemName: item.itemName || 'Unknown Item',
-          currentStock: item.currentStock || 0,
-          category: (['beer', 'wine', 'cigarettes'].includes(item.category?.toLowerCase())) 
-            ? item.category.toLowerCase() as 'beer' | 'wine' | 'cigarettes'
-            : 'beer' // Default category
-        };
-        return record;
-      });
-    
-    console.log('Processed inventory records:', processed.length);
-    console.log('First processed record:', processed[0]);
-    return processed;
-  };
-
-  // Process Square sales data (already structured objects)
-  const processSquareSalesData = (salesData: any[]): SalesRecord[] => {
-    console.log('=== PROCESSING SQUARE SALES DATA ===');
-    console.log('Raw sales data:', salesData);
-    
-    const processed = salesData
-      .filter(item => item && item.itemName && item.datetime)
-      .map(item => {
-        const record: SalesRecord = {
-          datetime: item.datetime || new Date().toISOString(),
-          itemName: item.itemName || 'Unknown Item',
-          quantitySold: parseInt(item.quantitySold?.toString()) || 0
-        };
-        return record;
-      });
-    
-    console.log('Processed sales records:', processed.length);
-    console.log('First processed record:', processed[0]);
-    return processed;
-  };
-
-  const handleSquareSync = async () => {
-    if (!selectedLocation || selectedLocation.status !== 'active') {
-      toast({
-        title: "Error",
-        description: "Please select an active Square location first",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setSquareSyncing(true);
-    try {
-      console.log('=== STARTING SQUARE SYNC ===');
-      console.log('Selected location:', selectedLocation);
-      
-      // Sync inventory
-      console.log('Calling Square sync for inventory...');
-      const inventoryResponse = await supabase.functions.invoke('square-sync', {
-        body: { action: 'inventory', locationId: selectedLocation.squareLocationId }
-      });
-
-      console.log('Inventory response:', inventoryResponse);
-      if (inventoryResponse.error) {
-        console.error('Inventory sync error:', inventoryResponse.error);
-        throw inventoryResponse.error;
-      }
-
-      // Sync sales data
-      console.log('Calling Square sync for sales...');
-      const salesResponse = await supabase.functions.invoke('square-sync', {
-        body: { action: 'sales', locationId: selectedLocation.squareLocationId }
-      });
-
-      console.log('Sales response:', salesResponse);
-      if (salesResponse.error) {
-        console.error('Sales sync error:', salesResponse.error);
-        throw salesResponse.error;
-      }
-
-      // Process Square data (structured objects, not CSV)
-      if (inventoryResponse.data?.inventory) {
-        const processedInventory = processSquareInventoryData(inventoryResponse.data.inventory);
-        onInventoryDataUpload(processedInventory);
-        setInventoryUploaded(true);
-        console.log('Square inventory processed and uploaded');
-      } else {
-        console.log('No inventory data in response:', inventoryResponse.data);
-      }
-
-      if (salesResponse.data?.sales) {
-        const processedSales = processSquareSalesData(salesResponse.data.sales);
-        onSalesDataUpload(processedSales);
-        setSalesUploaded(true);
-        console.log('Square sales processed and uploaded');
-      } else {
-        console.log('No sales data in response:', salesResponse.data);
-      }
-
-      toast({
-        title: "Success!",
-        description: `Synced ${inventoryResponse.data?.inventory?.length || 0} inventory items and ${salesResponse.data?.sales?.length || 0} sales records from Square`,
-      });
-    } catch (error) {
-      console.error('Square sync error:', error);
-      toast({
-        title: "Square Sync Failed",
-        description: error.message || "Failed to sync with Square. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setSquareSyncing(false);
-    }
-  };
-
   return (
     <div className="space-y-6 mb-6">
-      {/* Square Sync Section */}
-      {selectedLocation && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <RefreshCw className="h-5 w-5" />
-              Square POS Integration
-            </CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Sync inventory and sales data directly from Square POS
-            </p>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-3 bg-muted/50 rounded-md">
-                <div>
-                  <p className="font-medium">{selectedLocation.name}</p>
-                  <p className="text-sm text-muted-foreground">{selectedLocation.address}</p>
-                </div>
-                <Button
-                  onClick={handleSquareSync}
-                  disabled={squareSyncing || selectedLocation.status !== 'active'}
-                  className="flex items-center gap-2"
-                >
-                  {squareSyncing ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-4 w-4" />
-                  )}
-                  {squareSyncing ? 'Syncing...' : 'Sync from Square'}
-                </Button>
-              </div>
-              {selectedLocation.status !== 'active' && (
-                <p className="text-sm text-muted-foreground">
-                  Location must be connected to Square to sync data
-                </p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       {/* Manual CSV Upload Section */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Sales History Upload */}
