@@ -214,7 +214,9 @@ serve(async (req) => {
         }).filter(item => item !== null) || [];
 
         console.log(`Final inventory array length: ${inventory.length}`);
-        console.log('Sample inventory items:', inventory.slice(0, 5));
+        
+        // Log the first 10 actual inventory items being returned
+        console.log('FIRST 10 INVENTORY ITEMS BEING RETURNED:', JSON.stringify(inventory.slice(0, 10), null, 2));
         
         // Count how many have real names vs fallback names
         const realNames = inventory.filter(item => !item.itemName.startsWith('Item-')).length;
