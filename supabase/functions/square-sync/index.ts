@@ -103,37 +103,54 @@ serve(async (req) => {
         const variationToItemMap = new Map();
         
         if (catalogData.objects) {
-          // First pass: Map all items by ID with enhanced name extraction
+          // Map all catalog objects (both items and variations) directly
           catalogData.objects.forEach((obj: any, index: number) => {
+            let itemName = null;
+            let categoryInfo = null;
+            
             if (obj.type === 'ITEM' && obj.item_data) {
-              let itemName = obj.item_data.name;
+              // Extract item name
+              itemName = obj.item_data.name;
+              
+              // Extract category information
+              if (obj.item_data.category_id) {
+                categoryInfo = obj.item_data.category_id;
+              }
               
               if (itemName) {
-                itemMap.set(obj.id, itemName);
+                itemMap.set(obj.id, { name: itemName, category: categoryInfo });
                 if (index < 10) {
-                  console.log(`Mapped ITEM ${obj.id} to "${itemName}"`);
+                  console.log(`Mapped ITEM ${obj.id} to "${itemName}" (category: ${categoryInfo})`);
                 }
               }
             }
-          });
-          
-          // Second pass: Map all variations to their parent items
-          catalogData.objects.forEach((obj: any, index: number) => {
+            
             if (obj.type === 'ITEM_VARIATION' && obj.item_variation_data) {
+              // For variations, first check if we have the parent item
               const itemId = obj.item_variation_data.item_id;
-              const itemName = itemMap.get(itemId);
+              const parentItem = itemMap.get(itemId);
               
-              if (itemName) {
-                let finalName = itemName;
+              if (parentItem) {
+                let finalName = parentItem.name;
                 const variationName = obj.item_variation_data.name;
                 
-                if (variationName && variationName !== 'Regular' && variationName !== itemName && variationName.length < 50) {
-                  finalName = `${itemName} - ${variationName}`;
+                // Only append variation name if it's meaningful
+                if (variationName && variationName !== 'Regular' && variationName !== '' && variationName !== parentItem.name && variationName.length < 50) {
+                  finalName = `${parentItem.name} - ${variationName}`;
                 }
                 
-                variationToItemMap.set(obj.id, finalName);
+                variationToItemMap.set(obj.id, { name: finalName, category: parentItem.category });
                 if (index < 10) {
-                  console.log(`Mapped VARIATION ${obj.id} to "${finalName}"`);
+                  console.log(`Mapped VARIATION ${obj.id} to "${finalName}" (category: ${parentItem.category})`);
+                }
+              } else {
+                // If no parent item found, try to extract name directly from variation
+                const variationName = obj.item_variation_data.name;
+                if (variationName && variationName !== 'Regular' && variationName !== '') {
+                  variationToItemMap.set(obj.id, { name: variationName, category: null });
+                  if (index < 10) {
+                    console.log(`Mapped VARIATION ${obj.id} to "${variationName}" (no parent item found)`);
+                  }
                 }
               }
             }
@@ -164,27 +181,35 @@ serve(async (req) => {
 
         const inventory = inventoryData.counts?.map((count: any, index: number) => {
           // Try variation mapping first, then item mapping
-          let itemName = variationToItemMap.get(count.catalog_object_id) || 
+          let itemInfo = variationToItemMap.get(count.catalog_object_id) || 
                         itemMap.get(count.catalog_object_id);
           
           const stockCount = parseInt(count.quantity) || 0;
           
           if (index < 10) {
-            console.log(`Processing count ${index}: ${count.catalog_object_id} -> "${itemName || 'NOT FOUND'}" (stock: ${stockCount})`);
+            console.log(`Processing count ${index}: ${count.catalog_object_id} -> "${itemInfo?.name || 'NOT FOUND'}" (stock: ${stockCount})`);
           }
           
           // If no mapping found, use fallback format
-          if (!itemName) {
-            itemName = `Item-${count.catalog_object_id}`;
+          if (!itemInfo) {
+            itemInfo = { 
+              name: `Item-${count.catalog_object_id}`, 
+              category: null 
+            };
             if (index < 5) {
-              console.log(`NO MAPPING FOUND for ${count.catalog_object_id}, using fallback: ${itemName}`);
+              console.log(`NO MAPPING FOUND for ${count.catalog_object_id}, using fallback: ${itemInfo.name}`);
             }
           }
           
+          // Use the mapped category if available, otherwise guess from name
+          const finalCategory = itemInfo.category ? 
+            guessCategory(itemInfo.name) : // Still guess from name since category_id isn't human readable
+            guessCategory(itemInfo.name);
+          
           return {
-            itemName,
+            itemName: itemInfo.name,
             currentStock: stockCount,
-            category: guessCategory(itemName)
+            category: finalCategory
           };
         }).filter(item => item !== null) || [];
 
