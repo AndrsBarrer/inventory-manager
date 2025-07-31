@@ -87,16 +87,16 @@ serve(async (req) => {
         });
         
         const inventoryData = await inventoryResponse.json();
-        console.log('Square inventory response:', inventoryData);
+        console.log('Square inventory response counts:', inventoryData.counts?.length);
 
-        // Get catalog items to map item names - fetch ALL catalog objects
+        // Get ALL catalog objects to build comprehensive mapping
         const catalogResponse = await fetch(`${SQUARE_BASE_URL}/catalog/list`, { headers });
         const catalogData = await catalogResponse.json();
         console.log('Catalog response objects count:', catalogData.objects?.length);
         
         // Enhanced debugging: show full structure of first few catalog objects
         if (catalogData.objects?.length > 0) {
-          console.log('Full catalog object structure sample:', JSON.stringify(catalogData.objects.slice(0, 2), null, 2));
+          console.log('Full catalog object structure sample:', JSON.stringify(catalogData.objects.slice(0, 3), null, 2));
         }
         
         const itemMap = new Map();
@@ -106,24 +106,12 @@ serve(async (req) => {
           // First pass: Map all items by ID with enhanced name extraction
           catalogData.objects.forEach((obj: any, index: number) => {
             if (obj.type === 'ITEM' && obj.item_data) {
-              // Try multiple fields to find the real item name
               let itemName = obj.item_data.name;
-              
-              // Check if we have a better name in other fields
-              if (obj.item_data.description && obj.item_data.description.length < obj.item_data.name?.length) {
-                itemName = obj.item_data.description;
-              }
-              
-              // Skip if name looks like a token/ID (long random strings)
-              if (itemName && (itemName.length > 50 || /^[A-Z0-9]{20,}$/.test(itemName))) {
-                console.log(`Skipping token-like name for ${obj.id}: "${itemName}"`);
-                return;
-              }
               
               if (itemName) {
                 itemMap.set(obj.id, itemName);
-                if (index < 5) {
-                  console.log(`Mapped ITEM ${obj.id} to "${itemName}" (from ${obj.item_data.name ? 'name' : 'description'})`);
+                if (index < 10) {
+                  console.log(`Mapped ITEM ${obj.id} to "${itemName}"`);
                 }
               }
             }
@@ -136,7 +124,6 @@ serve(async (req) => {
               const itemName = itemMap.get(itemId);
               
               if (itemName) {
-                // Use variation name if it's meaningful, otherwise just use item name
                 let finalName = itemName;
                 const variationName = obj.item_variation_data.name;
                 
@@ -145,7 +132,7 @@ serve(async (req) => {
                 }
                 
                 variationToItemMap.set(obj.id, finalName);
-                if (index < 5) {
+                if (index < 10) {
                   console.log(`Mapped VARIATION ${obj.id} to "${finalName}"`);
                 }
               }
@@ -170,19 +157,28 @@ serve(async (req) => {
           return 'beer'; // Default to beer for beverages
         };
 
-        const inventory = inventoryData.counts?.map((count: any) => {
-          // Try variation mapping first, then item mapping, then default
+        // Debug: Show a few inventory count objects
+        if (inventoryData.counts?.length > 0) {
+          console.log('Sample inventory counts:', JSON.stringify(inventoryData.counts.slice(0, 3), null, 2));
+        }
+
+        const inventory = inventoryData.counts?.map((count: any, index: number) => {
+          // Try variation mapping first, then item mapping
           let itemName = variationToItemMap.get(count.catalog_object_id) || 
-                        itemMap.get(count.catalog_object_id) || 
-                        `Item-${count.catalog_object_id}`;
+                        itemMap.get(count.catalog_object_id);
           
           const stockCount = parseInt(count.quantity) || 0;
-          console.log(`Processing: ${count.catalog_object_id} -> "${itemName}" (stock: ${stockCount})`);
           
-          // Only skip items with completely unknown names AND no stock
-          if (itemName === `Item-${count.catalog_object_id}` && stockCount <= 0) {
-            console.log(`Skipping unmapped item with no stock: ${count.catalog_object_id}`);
-            return null;
+          if (index < 10) {
+            console.log(`Processing count ${index}: ${count.catalog_object_id} -> "${itemName || 'NOT FOUND'}" (stock: ${stockCount})`);
+          }
+          
+          // If no mapping found, use fallback format
+          if (!itemName) {
+            itemName = `Item-${count.catalog_object_id}`;
+            if (index < 5) {
+              console.log(`NO MAPPING FOUND for ${count.catalog_object_id}, using fallback: ${itemName}`);
+            }
           }
           
           return {
@@ -193,7 +189,12 @@ serve(async (req) => {
         }).filter(item => item !== null) || [];
 
         console.log(`Final inventory array length: ${inventory.length}`);
-        console.log('Sample inventory items:', inventory.slice(0, 3));
+        console.log('Sample inventory items:', inventory.slice(0, 5));
+        
+        // Count how many have real names vs fallback names
+        const realNames = inventory.filter(item => !item.itemName.startsWith('Item-')).length;
+        const fallbackNames = inventory.filter(item => item.itemName.startsWith('Item-')).length;
+        console.log(`Real names: ${realNames}, Fallback names: ${fallbackNames}`);
 
         return new Response(JSON.stringify({ inventory }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
