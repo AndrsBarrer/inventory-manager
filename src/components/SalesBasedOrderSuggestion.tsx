@@ -160,6 +160,7 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
       'Jameson 375ml': { minimumStock: 15, daysOfSupply: 7 },
       "Chateau d'esclans 'Whispering Angel' Rose": { minimumStock: 6, daysOfSupply: 7 }, // Order at 6 units - people buy 3 at a time
       'Chateau Souverain Wine Cabernet Sauvignon': { minimumStock: 5, daysOfSupply: 7 }, // Minimum 5 units
+      'Underwood Pinot Noir 750ml': { minimumStock: 10, daysOfSupply: 7 }, // Order at 10 units - minimum reorder point
       // Add more predefined rules here as needed
     };
     
@@ -326,7 +327,7 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
       });
     }
 
-    const filteredOrderItems = orderItems.filter(item => item.suggestedOrder > 0 && item.avgDailySales > 0);
+    const filteredOrderItems = orderItems.filter(item => item.suggestedOrder > 0);
 
     // Group by specific category from inventory data
     const categories: Record<string, OrderItem[]> = {};
