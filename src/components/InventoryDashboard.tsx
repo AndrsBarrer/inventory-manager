@@ -134,17 +134,34 @@ export const InventoryDashboard: React.FC = () => {
 
 
   // Convert uploaded inventory data to Product format for display
-  const convertedProducts: Product[] = inventoryData.map((item, index) => ({
-    id: `uploaded-${index}`,
-    name: item.itemName,
-    category: item.category === 'cigarettes' ? 'spirits' : item.category as 'wine' | 'beer' | 'spirits',
-    currentStock: item.currentStock,
-    reorderPoint: item.category === 'cigarettes' ? 100 : 10, // Default reorder points
-    maxStock: item.category === 'cigarettes' ? 200 : 50, // Default max stock
-    supplier: item.category === 'cigarettes' ? 'Giant Wholesale (Cigarettes)' : 'Local Supplier',
-    lastRestocked: '2024-01-15',
-    unitsPerCase: item.category === 'cigarettes' ? 10 : 6
-  }));
+  const convertedProducts: Product[] = inventoryData.map((item, index) => {
+    // Define specific reorder points for certain products
+    const getReorderPoint = (itemName: string, category: string) => {
+      const specificRules: Record<string, number> = {
+        'Veuve Clicquot Brut 750ml No Box': 6, // Minimum 6 units due to high volume purchases
+      };
+      
+      if (specificRules[itemName]) {
+        return specificRules[itemName];
+      }
+      
+      // Default rules by category
+      if (category === 'cigarettes') return 100;
+      return 10;
+    };
+
+    return {
+      id: `uploaded-${index}`,
+      name: item.itemName,
+      category: item.category === 'cigarettes' ? 'spirits' : item.category as 'wine' | 'beer' | 'spirits',
+      currentStock: item.currentStock,
+      reorderPoint: getReorderPoint(item.itemName, item.category),
+      maxStock: item.category === 'cigarettes' ? 200 : 50, // Default max stock
+      supplier: item.category === 'cigarettes' ? 'Giant Wholesale (Cigarettes)' : 'Local Supplier',
+      lastRestocked: '2024-01-15',
+      unitsPerCase: item.category === 'cigarettes' ? 10 : 6
+    };
+  });
 
   // Filter products based on search query
   const filteredProducts = convertedProducts.filter(product =>
