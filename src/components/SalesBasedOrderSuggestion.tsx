@@ -164,6 +164,7 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
       'Hess Select Chardonnay Wine': { minimumStock: 7, daysOfSupply: 7 }, // Keep minimum 7 units
       'Smirnoff 200ml': { minimumStock: 16, daysOfSupply: 7 }, // Keep minimum 16 units
       'Justin Sauvignon Blanc White Wine': { minimumStock: 10, daysOfSupply: 7 }, // Keep minimum 10 units
+      'Apothic Red Blend': { minimumStock: 5, daysOfSupply: 7 }, // Keep minimum 5 units
       // Add more predefined rules here as needed
     };
     
