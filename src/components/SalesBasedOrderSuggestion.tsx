@@ -162,6 +162,8 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
       'Chateau Souverain Wine Cabernet Sauvignon': { minimumStock: 5, daysOfSupply: 7 }, // Minimum 5 units
       'Underwood Pinot Noir 750ml': { minimumStock: 10, daysOfSupply: 7 }, // Order at 10 units - minimum reorder point
       'Hess Select Chardonnay Wine': { minimumStock: 7, daysOfSupply: 7 }, // Keep minimum 7 units
+      'Smirnoff 200ml': { minimumStock: 16, daysOfSupply: 7 }, // Keep minimum 16 units
+      'Justin Sauvignon Blanc White Wine': { minimumStock: 10, daysOfSupply: 7 }, // Keep minimum 10 units
       // Add more predefined rules here as needed
     };
     
