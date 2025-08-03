@@ -161,6 +161,7 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
       "Chateau d'esclans 'Whispering Angel' Rose": { minimumStock: 6, daysOfSupply: 7 }, // Order at 6 units - people buy 3 at a time
       'Chateau Souverain Wine Cabernet Sauvignon': { minimumStock: 5, daysOfSupply: 7 }, // Minimum 5 units
       'Underwood Pinot Noir 750ml': { minimumStock: 10, daysOfSupply: 7 }, // Order at 10 units - minimum reorder point
+      'Hess Select Chardonnay Wine': { minimumStock: 7, daysOfSupply: 7 }, // Keep minimum 7 units
       // Add more predefined rules here as needed
     };
     
