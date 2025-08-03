@@ -327,7 +327,7 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
       });
     }
 
-    const filteredOrderItems = orderItems.filter(item => item.suggestedOrder > 0);
+    const filteredOrderItems = orderItems.filter(item => item.suggestedOrder > 0 && item.avgDailySales > 0);
 
     // Group by specific category from inventory data
     const categories: Record<string, OrderItem[]> = {};
