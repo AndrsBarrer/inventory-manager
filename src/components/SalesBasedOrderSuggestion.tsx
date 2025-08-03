@@ -168,7 +168,9 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
     
     // Check for Chardonnay wines - minimum 7 units
     const isChardonnay = itemName.toLowerCase().includes('chardonnay');
-    if (isChardonnay && !stockRules[itemName]) {
+    // Check for Sauvignon Blanc wines - minimum 7 units
+    const isSauvignonBlanc = itemName.toLowerCase().includes('sauvignon blanc');
+    if ((isChardonnay || isSauvignonBlanc) && !stockRules[itemName]) {
       return { minimumStock: 7, daysOfSupply: 7 };
     }
     
