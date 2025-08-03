@@ -165,6 +165,13 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
       // Add more predefined rules here as needed
     };
     
+    
+    // Check for Chardonnay wines - minimum 7 units
+    const isChardonnay = itemName.toLowerCase().includes('chardonnay');
+    if (isChardonnay && !stockRules[itemName]) {
+      return { minimumStock: 7, daysOfSupply: 7 };
+    }
+    
     // High selling products (4-5 bottles per week = ~0.57-0.71 per day) should have minimum 4 units
     const weeklyAverage = avgDailySales * 7;
     const isHighSellingProduct = weeklyAverage >= 4;
