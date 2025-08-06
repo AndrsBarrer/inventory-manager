@@ -135,6 +135,9 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
     if (name.includes('12 pack') || name.includes('12pk')) {
       return 2; // 12 pack beer = 2 units in a case
     }
+    if (name.includes('8 pack') || name.includes('8pk')) {
+      return 3; // 8 pack beer = 3 units in a case
+    }
     if (name.includes('6 pack') || name.includes('6pk')) {
       return 4; // 6 pack beer = 4 units in a case
     }
