@@ -131,6 +131,23 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
       return 5; // Velo has 5 units per case
     }
 
+    // Beer pack configurations
+    if (name.includes('12 pack') || name.includes('12pk')) {
+      return 2; // 12 pack beer = 2 units in a case
+    }
+    if (name.includes('6 pack') || name.includes('6pk')) {
+      return 4; // 6 pack beer = 4 units in a case
+    }
+    if (name.includes('4 pack') || name.includes('4pk')) {
+      return 6; // 4 pack beer = 6 units in a case
+    }
+    if (name.includes('18 pack') || name.includes('18pk')) {
+      return 1; // 18 pack beer = 1 unit in a case
+    }
+    if (name.includes('24 pack') || name.includes('24pk')) {
+      return 1; // 24 pack beer = 1 unit in a case
+    }
+
     // Volume-based case sizing (order matters - check more specific patterns first)
     if (name.includes('1.75') || name.includes('1750')) {
       return 6;
