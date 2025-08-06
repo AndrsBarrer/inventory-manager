@@ -185,6 +185,7 @@ export const SalesBasedOrderSuggestion: React.FC<SalesBasedOrderSuggestionProps>
       'Smirnoff 200ml': { minimumStock: 16, daysOfSupply: 7 }, // Keep minimum 16 units
       'Justin Sauvignon Blanc White Wine': { minimumStock: 10, daysOfSupply: 7 }, // Keep minimum 10 units
       'Apothic Red Blend': { minimumStock: 5, daysOfSupply: 7 }, // Keep minimum 5 units
+      'Pacifico 12 pk Bottles': { minimumStock: 2, daysOfSupply: 7 }, // Keep minimum 2 units per case
       // Add more predefined rules here as needed
     };
     
