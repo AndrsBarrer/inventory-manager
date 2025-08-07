@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useToast } from '@/hooks/use-toast';
 
 const HARDCODED_USERNAME = 'wolfliquor';
-const HARDCODED_PASSWORD = 'Simran135!@';
+const HARDCODED_PASSWORD = 'ordermind23';
 
 const Auth = () => {
   const [username, setUsername] = useState('');
