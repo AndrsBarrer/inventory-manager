@@ -44,7 +44,6 @@ export const InventoryDashboard: React.FC = () => {
     try {
       const res = await fetch(`${import.meta.env.VITE_API_URL}/api/low-stock`)
       const data = await res.json()
-      console.log(data)
 
       const apiLocations = data.locations || []
 
@@ -63,7 +62,6 @@ export const InventoryDashboard: React.FC = () => {
 
       setLowStockItems(allLowStockProducts)
       setLocations(apiLocations.map((l: any) => ({ id: l.id, name: l.name })))
-      console.log(apiLocations)
     } catch (err) {
       console.error('Error fetching low-stock items:', err)
     } finally {
@@ -139,7 +137,7 @@ export const InventoryDashboard: React.FC = () => {
                         <div className="flex flex-col items-end gap-1">
                           {item.low_stock && <AlertTriangle className="text-warning h-5 w-5" />}
                           <div className={`font-bold ${item.low_stock ? 'text-warning' : 'text-foreground'}`}>
-                            Current Stock: {item.inventory} {item.low_stock && '(Low Stock)'}
+                            Current Stock: {item.inventory}
                           </div>
 
                           <div className="text-sm">
