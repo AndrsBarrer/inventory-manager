@@ -156,124 +156,112 @@ async function fetchRecentSales(options, locationIds = []) {
     return sales;
 }
 
-
-
 // --- PRODUCTS (ITEM objects) ---
 async function upsertProducts(items) {
     if (!items || items.length === 0) {
-        console.log('No items to upsert.')
-        return
+        console.log('No items to upsert.');
+        return;
     }
 
-    const chunkSize = 100
+    const chunkSize = 100;
 
     for (let i = 0; i < items.length; i += chunkSize) {
         const chunk = items.slice(i, i + chunkSize).map(item => {
-            const { id: square_id, item_data } = item
-            if (!item_data) return null
+            const { id: square_id, item_data } = item;
+            if (!item_data) return null;
 
-            const name = item_data.name || null
-            const sku = item_data && item_data.variations && item_data.variations.length > 0
-                ? (item_data.variations[0].item_variation_data.sku || null)
-                : null
+            const name = item_data.name || null;
+            const sku = null; // <- don’t borrow from first variation
+            const description = item_data.description || null;
+            const price = null; // price belongs to variations
+            const category = item_data.category_id || null; // <- correct path
 
-            const description = item_data.description || null
+            return { square_id, name, sku, description, price, category };
+        }).filter(Boolean);
 
-            // For ITEM (parent), price will often be on variations; set null for parent
-            const price = null
+        if (chunk.length === 0) continue;
 
-            let category = null
-            if (item_data.product_data && item_data.product_data.category_id) {
-                category = item_data.product_data.category_id
-            } else if (item_data.category_id) {
-                category = item_data.category_id
-            }
-
-            return { square_id, name, sku, description, price, category }
-        }).filter(Boolean)
-
-        if (chunk.length === 0) continue
-
-        let retries = 3
-        let backoff = 500
+        let retries = 3, backoff = 500;
         while (retries > 0) {
             const { error } = await supabase
                 .from('products')
-                .upsert(chunk, { onConflict: 'square_id' })
+                .upsert(chunk, { onConflict: 'square_id' });
+
             if (!error) {
-                console.log(`Upserted chunk of ${chunk.length} ITEM products`)
-                break
+                console.log(`Upserted chunk of ${chunk.length} ITEM products`);
+                break;
             } else {
-                console.error('Error upserting products chunk:', error)
-                retries--
+                console.error('Error upserting products chunk:', error);
+                retries--;
                 if (retries === 0) {
-                    console.error('Max retries reached, skipping this chunk')
-                    break
+                    console.error('Max retries reached, skipping this chunk');
+                    break;
                 }
-                console.log(`Retrying in ${backoff}ms... (${retries} retries left)`)
-                await delay(backoff)
-                backoff *= 2
+                console.log(`Retrying in ${backoff}ms... (${retries} retries left)`);
+                await delay(backoff);
+                backoff *= 2;
             }
         }
-        await delay(200)
+        await delay(200);
     }
 }
 
-// --- VARIATIONS (ITEM_VARIATION) ---
-async function upsertVariations(variations) {
+async function upsertVariations(variations, itemNameById = new Map()) {
     if (!variations || variations.length === 0) {
-        console.log('No variations to upsert.')
-        return
+        console.log('No variations to upsert.');
+        return;
     }
 
-    const chunkSize = 100
+    const chunkSize = 100;
     for (let i = 0; i < variations.length; i += chunkSize) {
         const chunk = variations.slice(i, i + chunkSize).map(v => {
-            const { id: square_id, item_variation_data } = v
-            if (!item_variation_data) return null
+            const { id: square_id, item_variation_data } = v;
+            if (!item_variation_data) return null;
 
-            const name = item_variation_data.name || 'Unknown Variation'
+            const parentId = item_variation_data.item_id || null;
+            const parentName = parentId ? itemNameById.get(parentId) : null;
 
-            const sku = item_variation_data.sku || null
+            const variationName = item_variation_data.name || 'Unknown Variation';
+            // 👇 This is the key fix for the "Regular" problem
+            const name = parentName ? `${parentName} - ${variationName}` : variationName;
 
-            let price = null
+            const sku = item_variation_data.sku || null;
+
+            let price = null;
             if (item_variation_data.price_money && typeof item_variation_data.price_money.amount === 'number') {
-                price = item_variation_data.price_money.amount / 100
+                price = item_variation_data.price_money.amount / 100;
             }
 
-            const description = null // variation-level description rarely present
-            const category = null
+            return { square_id, name, sku, description: null, price, category: null };
+        }).filter(Boolean);
 
-            // We store variations in the same products table so inventory can map to variation.square_id
-            return { square_id, name, sku, description, price, category }
-        }).filter(Boolean)
+        if (chunk.length === 0) continue;
 
-        if (chunk.length === 0) continue
-
-        let retries = 3
-        let backoff = 500
+        let retries = 3, backoff = 500;
         while (retries > 0) {
             const { error } = await supabase
                 .from('products')
-                .upsert(chunk, { onConflict: 'square_id' })
+                .upsert(chunk, { onConflict: 'square_id' });
+
             if (!error) {
-                console.log(`Upserted chunk of ${chunk.length} VARIATIONS`)
-                break
+                console.log(`Upserted chunk of ${chunk.length} VARIATIONS`);
+                break;
             } else {
-                console.error('Error upserting variations chunk:', error)
-                retries--
+                console.error('Error upserting variations chunk:', error);
+                retries--;
                 if (retries === 0) {
-                    console.error('Max retries reached, skipping this chunk')
-                    break
+                    console.error('Max retries reached, skipping this chunk');
+                    break;
                 }
-                console.log(`Retrying in ${backoff}ms... (${retries} retries left)`)
-                await delay(backoff)
-                backoff *= 2
+                console.log(`Retrying in ${backoff}ms... (${retries} retries left)`);
+                await delay(backoff);
+                backoff *= 2;
             }
         }
-        await delay(200)
+        await delay(200);
     }
 }
+
 
 // --- LOCATIONS ---
 async function upsertLocations(locations) {
@@ -364,39 +352,6 @@ async function upsertSales(orders) {
         .upsert(rows, { onConflict: 'square_id' });
     if (error) console.error('Error upserting sales:', error);
     else console.log(`Upserted ${rows.length} sales rows`);
-}
-
-
-// --- Helper to fetch single catalog object and upsert it if missing ---
-async function ensureCatalogObjectExists(squareObjectId) {
-    // Check local first
-    const { data: existing } = await supabase
-        .from('products')
-        .select('id, square_id')
-        .eq('square_id', squareObjectId)
-        .limit(1)
-
-    if (existing && existing.length > 0) return true
-
-    // fetch from square
-    const obj = await fetchCatalogObject(squareObjectId)
-    if (!obj) {
-        console.warn('Could not fetch catalog object', squareObjectId)
-        return false
-    }
-
-    if (obj.type === 'ITEM') {
-        await upsertProducts([obj])
-        return true
-    }
-    if (obj.type === 'ITEM_VARIATION') {
-        await upsertVariations([obj])
-        return true
-    }
-
-    // For other types we don't handle explicitly
-    console.warn('Catalog object type not supported for upsert:', obj.type)
-    return false
 }
 
 async function upsertInventoryCounts(counts) {
@@ -554,6 +509,120 @@ async function fetchProductsBySquareIds(ids) {
     return allProducts
 }
 
+
+// --- PRODUCTS + VARIATIONS ---
+async function productSync() {
+    console.log("Starting product + variation sync...")
+    const baseUrl = 'https://connect.squareup.com/v2/catalog/list?types=ITEM,ITEM_VARIATION,CATEGORY'
+    const options = {
+        headers: {
+            'Square-Version': '2023-08-16',
+            'Authorization': `Bearer ${process.env.SQUARE_ACCESS_TOKEN}`,
+            'Content-Type': 'application/json',
+        },
+    }
+
+    let allObjects = []
+    let cursor = null
+
+    do {
+        const res = await fetchWithRetry(`${baseUrl}${cursor ? `&cursor=${cursor}` : ''}`, options)
+        if (!res.ok) throw new Error(`Failed to fetch catalog list: ${res.status}`)
+        const data = await res.json()
+        allObjects = allObjects.concat(data.objects || [])
+        cursor = data.cursor || null
+    } while (cursor)
+
+    const items = allObjects.filter(obj => obj.type === 'ITEM')
+    const variations = allObjects.filter(obj => obj.type === 'ITEM_VARIATION')
+
+    const itemNameById = new Map(items.map(i => [i.id, i.item_data?.name || null]))
+
+    await upsertProducts(items)
+    await upsertVariations(variations, itemNameById)
+
+    console.log("Finished product sync")
+}
+
+// --- LOCATIONS ---
+async function locationSync() {
+    console.log("Starting locations sync...")
+    const options = {
+        headers: {
+            'Square-Version': '2023-08-16',
+            'Authorization': `Bearer ${process.env.SQUARE_ACCESS_TOKEN}`,
+            'Content-Type': 'application/json',
+        },
+    }
+
+    const locRes = await fetchWithRetry('https://connect.squareup.com/v2/locations', options)
+    if (!locRes.ok) throw new Error(`Failed to fetch locations: ${locRes.status}`)
+    const locData = await locRes.json()
+    const locations = locData.locations || []
+    await upsertLocations(locations)
+
+    console.log("Finished locations sync")
+}
+
+// --- SALES ---
+async function salesSync() {
+    console.log("Starting sales sync...")
+    const options = {
+        headers: {
+            'Square-Version': '2023-08-16',
+            'Authorization': `Bearer ${process.env.SQUARE_ACCESS_TOKEN}`,
+            'Content-Type': 'application/json',
+        },
+    }
+
+    const locRes = await fetchWithRetry('https://connect.squareup.com/v2/locations', options)
+    if (!locRes.ok) throw new Error(`Failed to fetch locations: ${locRes.status}`)
+    const locData = await locRes.json()
+    const locationIds = locData.locations.map(l => l.id).filter(Boolean)
+
+    if (!locationIds.length) {
+        console.warn("No locations found; skipping sales sync.")
+        return
+    }
+
+    const recentSales = await fetchRecentSales(options, locationIds)
+    await upsertSales(recentSales)
+
+    console.log("Finished sales sync")
+}
+
+// --- INVENTORY ---
+async function inventorySync() {
+    console.log("Starting inventory sync...")
+    const baseUrl = 'https://connect.squareup.com/v2/catalog/list?types=ITEM_VARIATION'
+    const options = {
+        headers: {
+            'Square-Version': '2023-08-16',
+            'Authorization': `Bearer ${process.env.SQUARE_ACCESS_TOKEN}`,
+            'Content-Type': 'application/json',
+        },
+    }
+
+    let allObjects = []
+    let cursor = null
+    do {
+        const res = await fetchWithRetry(`${baseUrl}${cursor ? `&cursor=${cursor}` : ''}`, options)
+        if (!res.ok) throw new Error(`Failed to fetch variations: ${res.status}`)
+        const data = await res.json()
+        allObjects = allObjects.concat(data.objects || [])
+        cursor = data.cursor || null
+    } while (cursor)
+
+    const variations = allObjects.filter(obj => obj.type === 'ITEM_VARIATION')
+    const variationIds = variations.map(v => v.id)
+
+    const allCounts = await fetchInventoryCountsBatch(variationIds, options)
+    await upsertInventoryCounts(allCounts)
+
+    console.log("Finished inventory sync")
+}
+
+
 // --- FULL SYNC flow (items + variations + inventory + locations) ---
 async function fullSync() {
     console.log('Fetching all catalog objects from Square...')
@@ -580,12 +649,18 @@ async function fullSync() {
     console.log(`Fetched ${allObjects.length} catalog objects`)
 
     // Separate types
-    const items = allObjects.filter(obj => obj.type === 'ITEM')
-    const variations = allObjects.filter(obj => obj.type === 'ITEM_VARIATION')
+    const items = allObjects.filter(obj => obj.type === 'ITEM');
+    const variations = allObjects.filter(obj => obj.type === 'ITEM_VARIATION');
 
-    // Upsert items and variations so products table contains both parent items and variations (variations needed for inventory mapping)
-    await upsertProducts(items)
-    await upsertVariations(variations)
+    // Build parent name map (item_id -> item name)
+    const itemNameById = new Map(
+        items.map(i => [i.id, i.item_data?.name || null])
+    );
+
+    // Upsert items and variations
+    await upsertProducts(items);
+    await upsertVariations(variations, itemNameById); // <-- pass the map
+
 
     // === Locations Sync ===
     console.log('Fetching locations...')
@@ -618,16 +693,38 @@ async function fullSync() {
 if (process.argv[1] === __filename) {
     ; (async () => {
         try {
-            console.log('Starting full sync...')
-            await fullSync()
-            console.log('Sync completed successfully.')
+            const type = process.argv[2] || "full"
+            console.log(`Starting ${type} sync...`)
+
+            switch (type) {
+                case "full":
+                    await fullSync()
+                    break
+                case "products":
+                    await productSync()
+                    break
+                case "locations":
+                    await locationSync()
+                    break
+                case "sales":
+                    await salesSync()
+                    break
+                case "inventory":
+                    await inventorySync()
+                    break
+                default:
+                    throw new Error(`Unknown sync type: ${type}`)
+            }
+
+            console.log(`${type} sync completed successfully.`)
             process.exit(0)
         } catch (error) {
-            console.error('Sync failed:', error)
+            console.error("Sync failed:", error)
             process.exit(1)
         }
     })()
 }
+
 
 export {
     fetchWithRetry,
@@ -637,5 +734,9 @@ export {
     upsertLocations,
     upsertProductOrDelete,
     fetchCatalogObject,
-    fullSync
+    fullSync,
+    productSync,
+    locationSync,
+    salesSync,
+    inventorySync
 }

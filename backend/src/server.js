@@ -27,10 +27,10 @@ import {
 const app = express()
 const PORT = process.env.PORT || 3000
 
-
 app.use(cors({
     origin: [
         'http://localhost:5173',              // Vite dev
+        'http://localhost:8080',   // the origin from your error
         process.env.FRONTEND_URL              // e.g. https://my-app.netlify.app
     ].filter(Boolean),
     methods: ['GET', 'POST', 'OPTIONS'],
@@ -108,37 +108,52 @@ app.post('/webhook/square', async (req, res) => {
     }
 })
 
+let syncInProgress = false; // global flag
+
 // --- Manual sync endpoint ---
 app.post('/api/sync', (req, res) => {
-    try {
-        const scriptPath = path.resolve(process.cwd(), 'src', 'syncToSupabase.js')
-        console.log('Spawning sync script:', scriptPath)
+    if (syncInProgress) {
+        return res.status(429).json({ message: 'A sync is already in progress. Please wait.' });
+    }
 
-        const syncProcess = spawn(process.execPath, [scriptPath], {
+    try {
+        const { type = 'full' } = req.body; // default = full sync
+        const scriptPath = path.resolve(process.cwd(), 'src', 'syncToSupabase.js');
+
+        console.log(`Spawning sync script (${type}) at:`, scriptPath);
+
+        syncInProgress = true; // lock
+
+        // Pass the type to the child process
+        const syncProcess = spawn(process.execPath, [scriptPath, type], {
             env: process.env,
             stdio: ['ignore', 'pipe', 'pipe']
-        })
+        });
 
         syncProcess.stdout.on('data', (data) => {
-            process.stdout.write(`[sync stdout] ${data}`)
-        })
+            process.stdout.write(`[sync stdout] ${data}`);
+        });
         syncProcess.stderr.on('data', (data) => {
-            process.stderr.write(`[sync stderr] ${data}`)
-        })
+            process.stderr.write(`[sync stderr] ${data}`);
+        });
 
         syncProcess.on('close', (code) => {
-            console.log(`Sync process exited with code ${code}`)
+            console.log(`Sync process exited with code ${code}`);
+            syncInProgress = false;
+
             if (code === 0) {
-                return res.status(200).json({ message: 'Sync completed' })
+                return res.status(200).json({ message: `Sync (${type}) completed` });
             } else {
-                return res.status(500).json({ message: `Sync process exited with code ${code}` })
+                return res.status(500).json({ message: `Sync process exited with code ${code}` });
             }
-        })
+        });
     } catch (err) {
-        console.error('Sync spawn error:', err)
-        return res.status(500).json({ message: 'Sync spawn error' })
+        console.error('Sync spawn error:', err);
+        syncInProgress = false;
+        return res.status(500).json({ message: 'Sync spawn error' });
     }
-})
+});
+
 
 // --- Low-stock endpoint (fixed & integrated snippet) ---
 app.get('/api/low-stock', async (req, res) => {

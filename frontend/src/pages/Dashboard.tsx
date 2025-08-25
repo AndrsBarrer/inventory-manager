@@ -38,16 +38,15 @@ const Dashboard = () => {
         <div className="mb-8 flex justify-between items-center">
           <div>
             <h1
-              className="text-3xl font-inter font-light tracking-wide bg-gradient-to-r from-slate-300 via-white to-slate-300 bg-clip-text text-transparent mb-2 cursor-pointer hover:from-slate-200 hover:via-slate-100 hover:to-slate-200 transition-all duration-300 drop-shadow-lg"
-              style={{
-                textShadow: '0 0 1px rgba(0,0,0,0.5), 0 0 2px rgba(0,0,0,0.3)',
-                WebkitTextStroke: '0.5px rgba(100,100,100,0.3)'
-              }}
+              className="text-3xl font-semibold tracking-tight text-gray-900 dark:text-gray-100 mb-1 cursor-pointer hover:text-blue-600 transition-colors duration-300"
               onClick={() => navigate('/')}
             >
-              Inventory Manager
+              Inventory Dashboard
             </h1>
-            <p className="text-muted-foreground">Manage your inventory and track stock levels</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Insights on stock levels and suggested orders
+            </p>
+
           </div>
           <div className="flex items-center gap-3">
             <Button variant="outline" onClick={handleSignOut}>
