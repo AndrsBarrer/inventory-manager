@@ -1,13 +1,13 @@
 // utils/stockRules.js
 
 const CATEGORY_RULES = [
-    { category: 'beer', keywords: ['ipa', 'lager', 'ale', 'stout', 'pilsner', 'beer'] },
-    { category: 'wine', keywords: ['cabernet', 'pinot', 'merlot', 'zinfandel', 'wine', 'chardonnay', 'sauvignon'] },
-    { category: 'liquor', keywords: ['vodka', 'whiskey', 'tequila', 'rum', 'gin', 'bourbon', 'scotch', 'brandy'] },
-    { category: 'seltzer', keywords: ['seltzer', 'white claw', 'truly', 'hard seltzer'] },
-    { category: 'ready-to-drink', keywords: ['twisted tea', 'high noon', 'cutwater', 'cocktail'] },
-    { category: 'tobacco', keywords: ['cigar', 'backwood', 'grabba', 'tobacco', 'leaf'] },
-    { category: 'nicotine', keywords: ['juul', 'zyn', 'lucy', 'velo', 'on!', 'oeo', 'pouch'] },
+    {category: 'beer', keywords: ['ipa', 'lager', 'ale', 'stout', 'pilsner', 'beer']},
+    {category: 'wine', keywords: ['cabernet', 'pinot', 'merlot', 'zinfandel', 'wine', 'chardonnay', 'sauvignon']},
+    {category: 'liquor', keywords: ['vodka', 'whiskey', 'tequila', 'rum', 'gin', 'bourbon', 'scotch', 'brandy']},
+    {category: 'seltzer', keywords: ['seltzer', 'white claw', 'truly', 'hard seltzer']},
+    {category: 'ready-to-drink', keywords: ['twisted tea', 'high noon', 'cutwater', 'cocktail', 'on the rocks']},
+    {category: 'tobacco', keywords: ['cigar', 'backwood', 'grabba', 'tobacco', 'leaf']},
+    {category: 'nicotine', keywords: ['juul', 'zyn', 'lucy', 'velo', 'on!', 'oeo', 'pouch']},
 ];
 
 function normalize(s) {
@@ -100,17 +100,17 @@ function getMinimumStockFromName(itemName = '', avgDailySales = 0) {
     const name = normalize(itemName);
 
     const stockRules = {
-        'marlboro lights': { minimumStock: 100, daysOfSupply: 14 },
-        'jameson 200ml': { minimumStock: 15, daysOfSupply: 7 },
-        'jameson 375ml': { minimumStock: 15, daysOfSupply: 7 },
-        "chateau d'esclans 'whispering angel' rose": { minimumStock: 6, daysOfSupply: 7 },
-        'chateau souverain wine cabernet sauvignon': { minimumStock: 5, daysOfSupply: 7 },
-        'underwood pinot noir 750ml': { minimumStock: 10, daysOfSupply: 7 },
-        'hess select chardonnay wine': { minimumStock: 7, daysOfSupply: 7 },
-        'smirnoff 200ml': { minimumStock: 16, daysOfSupply: 7 },
-        'justin sauvignon blanc white wine': { minimumStock: 10, daysOfSupply: 7 },
-        'apothic red blend': { minimumStock: 5, daysOfSupply: 7 },
-        'pacifico 12 pk bottles': { minimumStock: 2, daysOfSupply: 7 }
+        'marlboro lights': {minimumStock: 100, daysOfSupply: 14},
+        'jameson 200ml': {minimumStock: 15, daysOfSupply: 7},
+        'jameson 375ml': {minimumStock: 15, daysOfSupply: 7},
+        "chateau d'esclans 'whispering angel' rose": {minimumStock: 6, daysOfSupply: 7},
+        'chateau souverain wine cabernet sauvignon': {minimumStock: 5, daysOfSupply: 7},
+        'underwood pinot noir 750ml': {minimumStock: 10, daysOfSupply: 7},
+        'hess select chardonnay wine': {minimumStock: 7, daysOfSupply: 7},
+        'smirnoff 200ml': {minimumStock: 16, daysOfSupply: 7},
+        'justin sauvignon blanc white wine': {minimumStock: 10, daysOfSupply: 7},
+        'apothic red blend': {minimumStock: 5, daysOfSupply: 7},
+        'pacifico 12 pk bottles': {minimumStock: 2, daysOfSupply: 7}
     };
 
     if (stockRules[name]) return stockRules[name];
@@ -118,7 +118,7 @@ function getMinimumStockFromName(itemName = '', avgDailySales = 0) {
     const isChardonnay = name.includes('chardonnay');
     const isSauvignon = name.includes('sauvignon blanc');
     if ((isChardonnay || isSauvignon) && !stockRules[name]) {
-        return { minimumStock: 7, daysOfSupply: 7 };
+        return {minimumStock: 7, daysOfSupply: 7};
     }
 
     const weeklyAverage = avgDailySales * 7;
