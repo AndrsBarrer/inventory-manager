@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import { AlertTriangle } from 'lucide-react'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import React, {useEffect, useState} from 'react'
+import {Card, CardContent, CardHeader, CardTitle} from '@/components/ui/card'
+import {Button} from '@/components/ui/button'
+import {Tabs, TabsList, TabsTrigger, TabsContent} from '@/components/ui/tabs'
+import {AlertTriangle} from 'lucide-react'
+import {ChevronLeft, ChevronRight} from 'lucide-react'
 
 export interface Product {
   id: string
@@ -23,7 +23,7 @@ export interface Product {
 
 export const InventoryDashboard: React.FC = () => {
   const [lowStockItems, setLowStockItems] = useState<Product[]>([])
-  const [locations, setLocations] = useState<{ id: string; name: string }[]>([])
+  const [locations, setLocations] = useState<{id: string; name: string}[]>([])
   const [loadingLow, setLoadingLow] = useState(false)
   const [activeLocation, setActiveLocation] = useState<string>('all')
   const [currentPage, setCurrentPage] = useState(1)
@@ -47,6 +47,16 @@ export const InventoryDashboard: React.FC = () => {
     }, 300)
   }
 
+  const scratcherNames = [
+    "7's",
+    "Loteria",
+    "Lotteria",
+    "Joker's Wild Poker",
+    "15X",
+    "100X",
+    "Sunny Money",
+    "California Black Premium"
+  ].map(n => n.toLowerCase())
 
   const fetchLowStock = async () => {
     setLoadingLow(true)
@@ -62,14 +72,13 @@ export const InventoryDashboard: React.FC = () => {
           locationName: loc.name
         }))
       )
-        .filter((p: any) => p.low_stock)
-        .filter((p: any) =>
-          p.name &&
-          !['regular', 'unknown variation'].includes(p.name.trim().toLowerCase())
-        )
+        .filter((p: any) => p.low_stock)          // make sure to only display low stock 
+        .filter((p: any) => p.salesPerDay > 0.0)  // only if the stock is actually selling
+        .filter((p: any) => !scratcherNames.some(s => p.name?.toLowerCase().includes(s))) // do not include scratchers
 
+      console.log(allLowStockProducts);
       setLowStockItems(allLowStockProducts)
-      setLocations(apiLocations.map((l: any) => ({ id: l.id, name: l.name })))
+      setLocations(apiLocations.map((l: any) => ({id: l.id, name: l.name})))
     } catch (err) {
       console.error('Error fetching low-stock items:', err)
     } finally {
@@ -90,8 +99,8 @@ export const InventoryDashboard: React.FC = () => {
     try {
       const res = await fetch(`${import.meta.env.VITE_API_URL}/api/sync`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: syncType })
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({type: syncType})
       })
       const data = await res.json()
       if (res.ok) {
@@ -122,7 +131,7 @@ export const InventoryDashboard: React.FC = () => {
   // Pagination handler
   const goToPage = (page: number) => {
     setCurrentPage(page)
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    window.scrollTo({top: 0, behavior: 'smooth'})
   }
 
   return (
