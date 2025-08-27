@@ -12,9 +12,9 @@ export interface Product {
   category?: string | null
   sales: number
   salesPerDay: number
-  inventory: number
-  low_stock: boolean
-  suggested_order: number
+  inventory?: number | null
+  low_stock?: boolean
+  suggested_order?: number
   minimumStock?: number
   unitsPerCase?: number
   locationId?: string
@@ -27,12 +27,17 @@ export const InventoryDashboard: React.FC = () => {
   const [loadingLow, setLoadingLow] = useState(false)
   const [activeLocation, setActiveLocation] = useState<string>('all')
   const [currentPage, setCurrentPage] = useState(1)
-  const [itemsPerPage] = useState(20) // number of products per page
+  const [itemsPerPage] = useState(20)
   const [modalVisible, setModalVisible] = useState(false)
   const [modalAnimate, setModalAnimate] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [syncType, setSyncType] = useState<'full' | 'products' | 'locations' | 'sales' | 'inventory'>('full')
   const [syncMessage, setSyncMessage] = useState<string>('')
+
+  // reset page when location filter or items change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [activeLocation, lowStockItems])
 
   const openModal = () => {
     setModalVisible(true)
@@ -43,7 +48,7 @@ export const InventoryDashboard: React.FC = () => {
     setModalAnimate(false)
     setTimeout(() => {
       setModalVisible(false)
-      setSyncMessage('') // clear message when closing
+      setSyncMessage('')
     }, 300)
   }
 
@@ -65,18 +70,28 @@ export const InventoryDashboard: React.FC = () => {
       const data = await res.json()
       const apiLocations = data.locations || []
 
+      // flatten and normalize product shape
       const allLowStockProducts = apiLocations.flatMap((loc: any) =>
-        (loc.products || []).map((prod: any) => ({
-          ...prod,
-          locationId: loc.id,
-          locationName: loc.name
-        }))
+        (loc.products || []).map((prod: any) => {
+          // normalize product id (maybe backend returns product_id or id)
+          const id = prod.id || prod.product_id || prod.productId || null
+          return {
+            ...prod,
+            id,
+            locationId: loc.id,
+            locationName: loc.name
+          }
+        })
       )
-        .filter((p: any) => p.low_stock)          // make sure to only display low stock 
-        .filter((p: any) => p.salesPerDay > 0.0)  // only if the stock is actually selling
-        .filter((p: any) => !scratcherNames.some(s => p.name?.toLowerCase().includes(s))) // do not include scratchers
+        // filter defensively
+        .filter((p: any) => {
+          // ensure we have a numeric salesPerDay to compare
+          const salesPerDay = Number(p.salesPerDay || 0)
+          const name = (p.name || '').toString()
+          const isScratcher = scratcherNames.some(s => name.toLowerCase().includes(s))
+          return Boolean(p.low_stock) && salesPerDay > 0 && !isScratcher && !!p.id
+        })
 
-      console.log(allLowStockProducts);
       setLowStockItems(allLowStockProducts)
       setLocations(apiLocations.map((l: any) => ({id: l.id, name: l.name})))
     } catch (err) {
@@ -87,9 +102,7 @@ export const InventoryDashboard: React.FC = () => {
     }
   }
 
-  useEffect(() => {
-    fetchLowStock()
-  }, [])
+  useEffect(() => {fetchLowStock()}, [])
 
   const fmtAvg = (v?: number | null) => (v === null || v === undefined ? '—' : Number(v).toFixed(2))
 
@@ -105,7 +118,7 @@ export const InventoryDashboard: React.FC = () => {
       const data = await res.json()
       if (res.ok) {
         setSyncMessage(`Sync completed: ${data.message}`)
-        fetchLowStock().catch(err => console.error('Error fetching low stock after sync', err))
+        await fetchLowStock()
       } else {
         setSyncMessage(`Sync failed: ${data.message}`)
       }
@@ -123,14 +136,13 @@ export const InventoryDashboard: React.FC = () => {
     : lowStockItems.filter(p => p.locationId === activeLocation)
   const sorted = [...filtered].sort((a, b) => (b.salesPerDay ?? 0) - (a.salesPerDay ?? 0))
 
-  // Pagination logic
-  const totalPages = Math.ceil(sorted.length / itemsPerPage)
+  // Pagination
+  const totalPages = Math.max(1, Math.ceil(sorted.length / itemsPerPage))
   const startIndex = (currentPage - 1) * itemsPerPage
   const currentItems = sorted.slice(startIndex, startIndex + itemsPerPage)
 
-  // Pagination handler
   const goToPage = (page: number) => {
-    setCurrentPage(page)
+    setCurrentPage(Math.max(1, Math.min(totalPages, page)))
     window.scrollTo({top: 0, behavior: 'smooth'})
   }
 
@@ -148,7 +160,7 @@ export const InventoryDashboard: React.FC = () => {
         </CardContent>
       </Card>
 
-      <Tabs value={activeLocation} onValueChange={setActiveLocation}>
+      <Tabs value={activeLocation} onValueChange={(v) => {setActiveLocation(v); setCurrentPage(1)}}>
         <TabsList>
           <TabsTrigger key="all" value="all">All</TabsTrigger>
           {locations
@@ -162,38 +174,29 @@ export const InventoryDashboard: React.FC = () => {
           ) : (
             <>
               {totalPages > 1 && (
-                <>
-                  {/* Option 2: Arrow icons (lucide) */}
-                  <div className="flex justify-center items-center gap-4 my-2 text-sm text-muted-foreground">
-                    <button
-                      className="p-1 rounded-full hover:bg-gray-100 disabled:opacity-50"
-                      disabled={currentPage === 1}
-                      onClick={() => goToPage(currentPage - 1)}
-                    >
-                      <ChevronLeft size={16} />
-                    </button>
-                    <span>Page {currentPage} of {totalPages}</span>
-                    <button
-                      className="p-1 rounded-full hover:bg-gray-100 disabled:opacity-50"
-                      disabled={currentPage === totalPages}
-                      onClick={() => goToPage(currentPage + 1)}
-                    >
-                      <ChevronRight size={16} />
-                    </button>
-                  </div>
-                </>
+                <div className="flex justify-center items-center gap-4 my-2 text-sm text-muted-foreground">
+                  <button className="p-1 rounded-full hover:bg-gray-100 disabled:opacity-50" disabled={currentPage === 1} onClick={() => goToPage(currentPage - 1)}><ChevronLeft size={16} /></button>
+                  <span>Page {currentPage} of {totalPages}</span>
+                  <button className="p-1 rounded-full hover:bg-gray-100 disabled:opacity-50" disabled={currentPage === totalPages} onClick={() => goToPage(currentPage + 1)}><ChevronRight size={16} /></button>
+                </div>
               )}
+
               {currentItems.length === 0 ? <p>No low stock items.</p> : (
                 <ul className="space-y-2">
                   {currentItems.map(item => {
                     const suggestedUnits = item.suggested_order ?? 0
                     const unitsPerCase = item.unitsPerCase ?? undefined
                     const casesToOrder = unitsPerCase ? Math.ceil(suggestedUnits / unitsPerCase) : null
+                    const currentStock = item.inventory === null || item.inventory === undefined ? '—' : item.inventory
+                    // fallback low_stock calculation if backend didn't provide it
+                    const lowStockFlag = (item.low_stock !== undefined && item.low_stock !== null)
+                      ? Boolean(item.low_stock)
+                      : ((item.inventory ?? 0) < (item.minimumStock ?? Infinity))
 
                     return (
-                      <li key={`${item.locationId}::${item.id}::${item.sku}`} className="flex justify-between items-center border p-2 rounded">
+                      <li key={`${item.locationId}::${item.id}`} className="flex justify-between items-center border p-2 rounded">
                         <div>
-                          <p className="font-semibold">{item.name}</p>
+                          <p className="font-semibold">{item.name ?? 'Unnamed product'}</p>
                           {item.locationName && <p className="text-xs text-muted-foreground">Location: {item.locationName}</p>}
                           <p className="text-xs text-muted-foreground">Category: {item.category ?? '—'}</p>
                           <p className="text-xs text-muted-foreground">SKU: {item.sku ?? '—'}</p>
@@ -202,12 +205,12 @@ export const InventoryDashboard: React.FC = () => {
                           {item.minimumStock !== undefined && <p className="text-xs text-muted-foreground">Minimum stock: {item.minimumStock}</p>}
                         </div>
                         <div className="flex flex-col items-end gap-1">
-                          {item.low_stock && <AlertTriangle className="text-warning h-5 w-5" />}
-                          <div className={`font-bold ${item.low_stock ? 'text-warning' : 'text-foreground'}`}>
-                            Current Stock: {item.inventory}
+                          {lowStockFlag && <AlertTriangle className="text-warning h-5 w-5" />}
+                          <div className={`font-bold ${lowStockFlag ? 'text-warning' : 'text-foreground'}`}>
+                            Current Stock: {currentStock}
                           </div>
                           <div className="text-sm">
-                            Suggested order: {suggestedUnits} units
+                            Suggested order: {suggestedUnits ?? 0} units
                             {unitsPerCase ? ` (${casesToOrder} case${casesToOrder === 1 ? '' : 's'})` : ''}
                           </div>
                           {unitsPerCase ? (
@@ -222,7 +225,6 @@ export const InventoryDashboard: React.FC = () => {
                 </ul>
               )}
 
-              {/* Pagination controls */}
               {totalPages > 1 && (
                 <div className="flex justify-center items-center gap-2 mt-4">
                   <Button disabled={currentPage === 1} onClick={() => goToPage(currentPage - 1)}>Prev</Button>

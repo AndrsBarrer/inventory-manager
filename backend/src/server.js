@@ -6,8 +6,11 @@ dotenv.config()
 import express from 'express'
 import cors from 'cors'
 import bodyParser from 'body-parser'
-import { spawn } from 'child_process'
+import {spawn} from 'child_process'
 import path from 'path'
+
+// Supabase client (server-only)
+import {supabase} from './supabaseClient.js'
 
 // ✅ Import sync helper functions
 import {
@@ -39,85 +42,16 @@ app.use(cors({
 
 app.use(bodyParser.json())
 
-
-import { createClient } from '@supabase/supabase-js'
-
-// Supabase client (server-only)
-const supabase = createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY
-)
-
-
-// --- Webhook endpoint ---
-app.post('/webhook/square', async (req, res) => {
-    try {
-        const event = req.body
-        console.log('Received Square webhook event:', JSON.stringify(event, null, 2))
-
-        // Square events come with `type` and `data.object`
-        const eventType = event.type
-        const objectData = event.data?.object
-
-        if (!eventType || !objectData) {
-            console.warn('Webhook missing eventType or objectData')
-            return res.status(400).send('Invalid payload')
-        }
-
-        // PRODUCT / CATALOG UPDATES
-        if (eventType.startsWith('catalog.')) {
-            const objectId = objectData.id
-            if (!objectId) {
-                console.warn('Catalog event without objectId')
-                return res.status(400).send('No object id')
-            }
-
-            // Deleted products come as `catalog.version.deleted` or have is_deleted = true
-            if (eventType.endsWith('.deleted') || objectData.is_deleted) {
-                await upsertProductOrDelete({ id: objectId, is_deleted: true })
-            } else {
-                // Fetch full object from Square, then upsert
-                const obj = await fetchCatalogObject(objectId)
-                await upsertProductOrDelete(obj)
-            }
-        }
-
-        // INVENTORY UPDATES
-        else if (eventType.startsWith('inventory.')) {
-            // Inventory count changes come with counts array or catalog_object_id
-            if (objectData.counts) {
-                await upsertInventoryCounts(objectData.counts)
-            } else if (objectData.catalog_object_id && objectData.quantity !== undefined) {
-                await upsertInventoryCounts([{
-                    location_id: objectData.location_id,
-                    catalog_object_id: objectData.catalog_object_id,
-                    quantity: objectData.quantity
-                }])
-            }
-        }
-
-        // LOCATION UPDATES
-        else if (eventType.startsWith('location.')) {
-            await upsertLocations([objectData])
-        }
-
-        res.status(200).send('Event processed')
-    } catch (err) {
-        console.error('Error processing webhook event:', err)
-        res.status(500).send('Internal Server Error')
-    }
-})
-
 let syncInProgress = false; // global flag
 
 // --- Manual sync endpoint ---
 app.post('/api/sync', (req, res) => {
     if (syncInProgress) {
-        return res.status(429).json({ message: 'A sync is already in progress. Please wait.' });
+        return res.status(429).json({message: 'A sync is already in progress. Please wait.'});
     }
 
     try {
-        const { type = 'full' } = req.body; // default = full sync
+        const {type = 'full'} = req.body; // default = full sync
         const scriptPath = path.resolve(process.cwd(), 'src', 'syncToSupabase.js');
 
         console.log(`Spawning sync script (${type}) at:`, scriptPath);
@@ -142,18 +76,17 @@ app.post('/api/sync', (req, res) => {
             syncInProgress = false;
 
             if (code === 0) {
-                return res.status(200).json({ message: `Sync (${type}) completed` });
+                return res.status(200).json({message: `Sync (${type}) completed`});
             } else {
-                return res.status(500).json({ message: `Sync process exited with code ${code}` });
+                return res.status(500).json({message: `Sync process exited with code ${code}`});
             }
         });
     } catch (err) {
         console.error('Sync spawn error:', err);
         syncInProgress = false;
-        return res.status(500).json({ message: 'Sync spawn error' });
+        return res.status(500).json({message: 'Sync spawn error'});
     }
 });
-
 
 // --- Low-stock endpoint (fixed & integrated snippet) ---
 app.get('/api/low-stock', async (req, res) => {
@@ -165,7 +98,7 @@ app.get('/api/low-stock', async (req, res) => {
 
         start = Date.now();
         // --- Fetch all locations ---
-        const { data: locationsData, error: locationsError } = await supabase
+        const {data: locationsData, error: locationsError} = await supabase
             .from('locations')
             .select('id, name'); // each location has id, name, square_id (these are the important fields)
         if (locationsError) throw locationsError;
@@ -181,7 +114,7 @@ app.get('/api/low-stock', async (req, res) => {
 
         start = Date.now();
         while (hasMore) {
-            const { data, error } = await supabase
+            const {data, error} = await supabase
                 .from('products')
                 .select('id, name, sku') // every product has an id, name, sku
                 .range(page * pageSize, (page + 1) * pageSize - 1);
@@ -194,12 +127,8 @@ app.get('/api/low-stock', async (req, res) => {
         }
 
         const productsData = allProducts;
-        // console.log('products count:', (productsData || []).length);
-        // console.log('products sample:', (productsData || []).slice(0, 3));
         console.log(`>>> /api/low-stock fetched products in ${Date.now() - start} ms`)
 
-        // --- Fetch ALL inventory rows, not just for limited productIds ---
-        // --- Fetch ALL inventory rows in chunks (robust for large tables) ---
         let inventoryRows = [];
         let invFrom = 0;
         const invChunk = 1000;
@@ -207,13 +136,13 @@ app.get('/api/low-stock', async (req, res) => {
 
         start = Date.now();
         while (!invDone) {
-            const { data: invChunkData, error: invChunkError } = await supabase
+            const {data: invChunkData, error: invChunkError} = await supabase
                 .from('inventory')
-                .select('location_id, product_id,  quantity', { count: 'exact' })
+                .select('location_id, product_id,  quantity', {count: 'exact'})
                 .range(invFrom, invFrom + invChunk - 1);
 
             if (invChunkError) {
-                console.error('Error fetching inventory chunk:', { from: invFrom, chunkSize: invChunk, error: invChunkError });
+                console.error('Error fetching inventory chunk:', {from: invFrom, chunkSize: invChunk, error: invChunkError});
                 // bail out (so the endpoint still responds) — or you can throw to fail fast
                 break;
             }
@@ -229,8 +158,6 @@ app.get('/api/low-stock', async (req, res) => {
             if (invChunkData.length < invChunk) invDone = true;
         }
 
-        // console.log('inventory rows count:', (inventoryRows || []).length);
-        // console.log('inventory rows sample:', (inventoryRows || []).slice(0, 3));
         console.log(`>>> /api/low-stock fetched inventory in ${Date.now() - start} ms`)
 
         // Creates a map of inventory where key is product_id, and value is array of objects with location_id and quantity
@@ -258,9 +185,9 @@ app.get('/api/low-stock', async (req, res) => {
 
         start = Date.now();
         while (!done) {
-            const { data, error } = await supabase
+            const {data, error} = await supabase
                 .from('sales')
-                .select('location_id, product_id, quantity, sale_date', { count: 'exact' })
+                .select('location_id, product_id, quantity, sale_date', {count: 'exact'})
                 .gte('sale_date', since)
                 .range(from, from + chunkSize - 1);
 
@@ -357,28 +284,167 @@ app.get('/api/low-stock', async (req, res) => {
         console.log(`>>> /api/low-stock END in ${(Date.now() - entireProcess) / 1000}s`)
 
         // Respond
-        res.json({ locations: finalLocations });
+        res.json({locations: finalLocations});
         return;
 
     } catch (err) {
         console.error('Error fetching low-stock items:', err)
-        res.status(500).json({ error: err.message || 'Internal server error' })
+        res.status(500).json({error: err.message || 'Internal server error'})
     }
 })
+
+// --- Low-stock endpoint (joined inventory + product -> locations JSON) ---
+app.get('/api/low-stock', async (req, res) => {
+    try {
+        console.log('>>> /api/low-stock START')
+
+        // optional: filter by a single location to reduce traffic
+        const {locationId} = req.query;
+
+        // 1) fetch locations (we still need names)
+        const {data: locationsData, error: locationsError} = await supabase
+            .from('locations')
+            .select('id, name');
+        if (locationsError) throw locationsError;
+
+        // build a location map so we always return all locations (even if no products)
+        const locationMap = new Map();
+        for (const loc of locationsData || []) {
+            locationMap.set(String(loc.id), {id: loc.id, name: loc.name, products: []});
+        }
+
+        // 2) fetch inventory rows with embedded product info (one DB call)
+        //    This relies on the FK relationship inventory.product_id -> products.id
+        //    PostgREST (Supabase) will return product as an object if you select it like below.
+        let inventoryQuery = supabase
+            .from('inventory')
+            .select(`
+        product_id,
+        location_id,
+        quantity,
+        product:products(id, name, sku, category)
+      `);
+
+        if (locationId) inventoryQuery = inventoryQuery.eq('location_id', locationId);
+
+        const {data: invRows = [], error: invError} = await inventoryQuery;
+        if (invError) throw invError;
+
+        console.log(`>>> /api/low-stock fetched ${invRows.length} inventory rows`);
+
+        // 3) fetch recent sales for WINDOW_DAYS and aggregate (same approach you had)
+        const WINDOW_DAYS = 14;
+        const since = new Date(Date.now() - WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
+        let salesQuery = supabase
+            .from('sales')
+            .select('product_id, location_id, quantity')
+            .gte('sale_date', since);
+
+        if (locationId) salesQuery = salesQuery.eq('location_id', locationId);
+
+        const {data: recentSales = [], error: salesError} = await salesQuery;
+        if (salesError) throw salesError;
+
+        // aggregate sales: key = `${product_id}::${location_id || 'all'}`
+        const salesAgg = new Map();
+        for (const s of recentSales) {
+            const key = `${s.product_id}::${s.location_id || 'all'}`;
+            salesAgg.set(key, (salesAgg.get(key) || 0) + (s.quantity || 0));
+        }
+
+        // helper: get aggregated sale for product/location
+        const getSale = (productId, locId) => {
+            const keyLoc = `${productId}::${locId}`;
+            const keyAll = `${productId}::all`;
+            const qty = salesAgg.get(keyLoc) ?? salesAgg.get(keyAll) ?? 0;
+            return {
+                sales: qty,
+                salesPerDay: qty / WINDOW_DAYS
+            };
+        };
+
+        // 4) For each inventory row, compose a product object and push into the relevant location
+        for (const row of invRows) {
+            // if product was not embedded (shouldn't happen if FK exists), skip
+            const product = row.product || null;
+            if (!product) {
+                console.warn('Inventory row missing joined product:', row);
+                continue;
+            }
+
+            const locId = row.location_id ? String(row.location_id) : null;
+            const locEntry = locationMap.get(String(locId)) || null;
+
+            // If the inventory row references a location that's not in locations table, create a placeholder
+            if (!locEntry) {
+                // optionally create a placeholder location entry
+                locationMap.set(String(locId), {
+                    id: row.location_id,
+                    name: '(unknown location)',
+                    products: []
+                });
+            }
+
+            const sale = getSale(row.product_id, row.location_id);
+
+            const productCategory = getCategoryFromName(product.name);
+            const unitsPerCase = getUnitsPerCaseFromName(product.name, productCategory);
+            const minStockRule = getMinimumStockFromName(product.name, sale.salesPerDay);
+            const categoryMinStock = getMinimumStockByCategory(productCategory, sale.salesPerDay);
+            const minimumStock = (minStockRule && minStockRule.minimumStock) || categoryMinStock || 0;
+
+            const currentQty = (row.quantity === null || row.quantity === undefined) ? 0 : Number(row.quantity);
+            let suggestedOrderUnits = Math.max(minimumStock - currentQty, 0);
+            if (suggestedOrderUnits > 0 && unitsPerCase > 1) {
+                suggestedOrderUnits = Math.ceil(suggestedOrderUnits / unitsPerCase) * unitsPerCase;
+            }
+
+            const productObj = {
+                id: row.product_id,
+                name: product.name,
+                sku: product.sku || null,
+                category: product.category || productCategory,
+                sales: sale.sales || 0,
+                salesPerDay: sale.salesPerDay || 0,
+                inventory: currentQty,
+                minimumStock,
+                unitsPerCase,
+                low_stock: currentQty < minimumStock,
+                suggested_order: suggestedOrderUnits
+            };
+
+            // push product into location entry
+            const target = locationMap.get(String(locId));
+            target.products.push(productObj);
+        }
+
+        // 5) final array: make sure to include all locations even if they have no products
+        const finalLocations = Array.from(locationMap.values());
+
+        console.log('>>> /api/low-stock END');
+
+        return res.json({locations: finalLocations});
+    } catch (err) {
+        console.error('Error building low-stock JSON:', err);
+        return res.status(500).json({error: err.message || 'Internal server error'});
+    }
+});
+
 
 // --- Endpoint to fetch all products, with optional filtering ---
 app.get('/api/products', async (req, res) => {
     try {
-        const { locationId } = req.query; // optional filter by location
+        const {locationId} = req.query; // optional filter by location
 
         // 1️⃣ Fetch locations
-        const { data: locationsData, error: locationsError } = await supabase
+        const {data: locationsData, error: locationsError} = await supabase
             .from('locations')
             .select('id, name');
         if (locationsError) throw locationsError;
 
         // 2️⃣ Fetch products with inventory
-        const { data: productsData, error: productsError } = await supabase
+        const {data: productsData, error: productsError} = await supabase
             .from('products')
             .select('id, name, category, inventory:inventory(quantity, location_id)');
         if (productsError) throw productsError;
@@ -390,7 +456,7 @@ app.get('/api/products', async (req, res) => {
 
             const inventoryRows = Array.isArray(p.inventory) && p.inventory.length > 0
                 ? p.inventory
-                : [{ quantity: 0, location_id: null }];
+                : [{quantity: 0, location_id: null}];
 
             inventoryRows.forEach(inv => {
                 const locId = inv.location_id || null;
@@ -410,10 +476,10 @@ app.get('/api/products', async (req, res) => {
             });
         });
 
-        res.json({ locations: locationsData, products: allProducts });
+        res.json({locations: locationsData, products: allProducts});
     } catch (err) {
         console.error('Error fetching all products:', err);
-        res.status(500).json({ error: err.message || 'Internal server error' });
+        res.status(500).json({error: err.message || 'Internal server error'});
     }
 });
 

@@ -1,5 +1,6 @@
+// square-sync.js
 import fetch from 'node-fetch'
-import { supabase } from './supabaseClient.js'
+import {supabase} from './supabaseClient.js'
 import url from 'url'
 
 const __filename = url.fileURLToPath(import.meta.url)
@@ -18,7 +19,8 @@ async function fetchWithRetry(url, options, retries = 3, backoff = 500) {
                 await delay(backoff)
                 return fetchWithRetry(url, options, retries - 1, backoff * 2)
             }
-            throw new Error(`Request failed with status ${res.status}`)
+            // allow caller to inspect body for 4xx errors
+            return res
         }
         return res
     } catch (error) {
@@ -54,9 +56,12 @@ async function fetchInventoryCountsBatch(variationIds, options) {
                 const res = await fetchWithRetry('https://connect.squareup.com/v2/inventory/batch-retrieve-counts', {
                     method: 'POST',
                     headers: options.headers,
-                    body: JSON.stringify({ catalog_object_ids: batchIds }),
+                    body: JSON.stringify({catalog_object_ids: batchIds}),
                 });
-                if (!res.ok) throw new Error(`Failed to fetch inventory batch: ${res.status}`);
+                if (!res.ok) {
+                    const text = await res.text();
+                    throw new Error(`Failed to fetch inventory batch: ${res.status} - ${text}`);
+                }
                 const data = await res.json();
                 if (data.counts) results.push(...data.counts);
                 console.log(`Fetched inventory batch ${currentIndex + 1}/${chunks.length}`);
@@ -69,7 +74,7 @@ async function fetchInventoryCountsBatch(variationIds, options) {
 
     // Start workers
     const workers = [];
-    for (let i = 0; i < maxConcurrentBatches; i++) {
+    for (let i = 0; i < Math.min(maxConcurrentBatches, chunks.length); i++) {
         workers.push(worker());
     }
 
@@ -77,6 +82,7 @@ async function fetchInventoryCountsBatch(variationIds, options) {
 
     return results;
 }
+
 async function fetchRecentSales(options, locationIds = []) {
     if (!Array.isArray(locationIds) || locationIds.length === 0) {
         throw new Error('fetchRecentSales requires an array of locationIds (max 10).');
@@ -118,7 +124,6 @@ async function fetchRecentSales(options, locationIds = []) {
                     sort_order: 'DESC'
                 }
             },
-            // include cursor in body when paginating
             cursor: cursor || undefined
         };
 
@@ -132,7 +137,6 @@ async function fetchRecentSales(options, locationIds = []) {
         });
 
         if (!res.ok) {
-            // include body text from Square to help debugging (400 responses include details)
             const text = await res.text();
             throw new Error(`Failed to fetch sales: ${res.status} - ${text}`);
         }
@@ -156,114 +160,308 @@ async function fetchRecentSales(options, locationIds = []) {
     return sales;
 }
 
-// --- PRODUCTS (ITEM objects) ---
-async function upsertProducts(items) {
-    if (!items || items.length === 0) {
-        console.log('No items to upsert.');
-        return;
-    }
+// -------------------- Catalog mapping helpers --------------------
 
-    const chunkSize = 100;
+// Build quick lookup maps from all catalog objects
+function buildCatalogMaps(allObjects) {
+    const itemById = new Map();
+    const variationById = new Map();
+    const variationGtin = new Map(); // variationId -> upc/gtin if present
+    const variationToItem = new Map(); // variationId -> parent item id
+    const itemNameById = new Map();
 
-    for (let i = 0; i < items.length; i += chunkSize) {
-        const chunk = items.slice(i, i + chunkSize).map(item => {
-            const { id: square_id, item_data } = item;
-            if (!item_data) return null;
-
-            const name = item_data.name || null;
-            const sku = null; // <- don’t borrow from first variation
-            const description = item_data.description || null;
-            const price = null; // price belongs to variations
-            const category = item_data.category_id || null; // <- correct path
-
-            return { square_id, name, sku, description, price, category };
-        }).filter(Boolean);
-
-        if (chunk.length === 0) continue;
-
-        let retries = 3, backoff = 500;
-        while (retries > 0) {
-            const { error } = await supabase
-                .from('products')
-                .upsert(chunk, { onConflict: 'square_id' });
-
-            if (!error) {
-                console.log(`Upserted chunk of ${chunk.length} ITEM products`);
-                break;
-            } else {
-                console.error('Error upserting products chunk:', error);
-                retries--;
-                if (retries === 0) {
-                    console.error('Max retries reached, skipping this chunk');
-                    break;
-                }
-                console.log(`Retrying in ${backoff}ms... (${retries} retries left)`);
-                await delay(backoff);
-                backoff *= 2;
-            }
+    for (const obj of allObjects) {
+        if (!obj || !obj.type) continue;
+        if (obj.type === 'ITEM') {
+            const name = obj.item_data?.name || null;
+            itemById.set(obj.id, obj);
+            itemNameById.set(obj.id, name);
+        } else if (obj.type === 'ITEM_VARIATION') {
+            variationById.set(obj.id, obj);
+            const v = obj.item_variation_data || {};
+            if (v.upc) variationGtin.set(obj.id, v.upc);
+            if (v.item_id) variationToItem.set(obj.id, v.item_id);
         }
-        await delay(200);
     }
+
+    return {itemById, variationById, variationGtin, variationToItem, itemNameById};
 }
 
-async function upsertVariations(variations, itemNameById = new Map()) {
-    if (!variations || variations.length === 0) {
-        console.log('No variations to upsert.');
-        return;
+async function fetchMappingsInBatches(squareIds) {
+    const chunkSize = 200;
+    const results = [];
+
+    console.log(`[fetchMappingsInBatches] Resolving ${squareIds.length} squareIds in chunks of ${chunkSize}`);
+
+    for (let i = 0; i < squareIds.length; i += chunkSize) {
+        const chunk = squareIds.slice(i, i + chunkSize);
+        try {
+            const {data: batchData = [], error} = await supabase
+                .from('square_catalog_mapping')
+                .select('square_id, product_id')
+                .in('square_id', chunk);
+
+            if (error) {
+                console.error(`[fetchMappingsInBatches] Error on batch ${i / chunkSize + 1}:`, {
+                    chunkSize: chunk.length,
+                    error
+                });
+                throw error;
+            }
+            console.log(`[fetchMappingsInBatches] Batch ${i / chunkSize + 1} succeeded (${chunk.length} ids)`);
+            results.push(...batchData);
+        } catch (err) {
+            console.error(`[fetchMappingsInBatches] Unexpected failure on batch ${i / chunkSize + 1}:`, err);
+            throw err;
+        }
     }
 
-    const chunkSize = 100;
-    for (let i = 0; i < variations.length; i += chunkSize) {
-        const chunk = variations.slice(i, i + chunkSize).map(v => {
-            const { id: square_id, item_variation_data } = v;
-            if (!item_variation_data) return null;
+    return results;
+}
 
-            const parentId = item_variation_data.item_id || null;
-            const parentName = parentId ? itemNameById.get(parentId) : null;
+async function fetchProductsInBatches(squareIds) {
+    const chunkSize = 200;
+    const results = [];
 
-            const variationName = item_variation_data.name || 'Unknown Variation';
-            // 👇 This is the key fix for the "Regular" problem
-            const name = parentName ? `${parentName} - ${variationName}` : variationName;
+    console.log(`[fetchProductsInBatches] Resolving ${squareIds.length} product ids in chunks of ${chunkSize}`);
 
-            const sku = item_variation_data.sku || null;
-
-            let price = null;
-            if (item_variation_data.price_money && typeof item_variation_data.price_money.amount === 'number') {
-                price = item_variation_data.price_money.amount / 100;
-            }
-
-            return { square_id, name, sku, description: null, price, category: null };
-        }).filter(Boolean);
-
-        if (chunk.length === 0) continue;
-
-        let retries = 3, backoff = 500;
-        while (retries > 0) {
-            const { error } = await supabase
+    for (let i = 0; i < squareIds.length; i += chunkSize) {
+        const chunk = squareIds.slice(i, i + chunkSize);
+        try {
+            const {data = [], error} = await supabase
                 .from('products')
-                .upsert(chunk, { onConflict: 'square_id' });
+                .select('id, square_id, gtin')
+                .in('square_id', chunk);
 
-            if (!error) {
-                console.log(`Upserted chunk of ${chunk.length} VARIATIONS`);
-                break;
-            } else {
-                console.error('Error upserting variations chunk:', error);
-                retries--;
-                if (retries === 0) {
-                    console.error('Max retries reached, skipping this chunk');
-                    break;
+            if (error) {
+                console.error(`[fetchProductsInBatches] Error on batch ${i / chunkSize + 1}:`, {
+                    chunkSize: chunk.length,
+                    error
+                });
+                throw error;
+            }
+            console.log(`[fetchProductsInBatches] Batch ${i / chunkSize + 1} succeeded (${chunk.length} ids)`);
+            results.push(...data);
+        } catch (err) {
+            console.error(`[fetchProductsInBatches] Unexpected failure on batch ${i / chunkSize + 1}:`, err);
+            throw err;
+        }
+    }
+
+    return results;
+}
+
+async function resolveProductIdsForSquareIds(squareIds) {
+    console.log(`[resolveProductIdsForSquareIds] Called with ${squareIds?.length || 0} ids`);
+
+    const uniqueIds = [...new Set((squareIds || []).filter(Boolean))];
+    if (uniqueIds.length === 0) {
+        console.log(`[resolveProductIdsForSquareIds] No valid ids, returning empty Map`);
+        return new Map();
+    }
+
+    console.log(`[resolveProductIdsForSquareIds] ${uniqueIds.length} unique ids after deduplication`);
+
+    // 1) Query existing mappings
+    let mappings;
+    try {
+        mappings = await fetchMappingsInBatches(uniqueIds);
+        console.log(`[resolveProductIdsForSquareIds] Found ${mappings.length} existing mappings`);
+    } catch (err) {
+        console.error('[resolveProductIdsForSquareIds] Failed during fetchMappingsInBatches', err);
+        throw err;
+    }
+
+    const result = new Map(mappings.map(m => [m.square_id, m.product_id]));
+    const unresolved = uniqueIds.filter(id => !result.has(id));
+    console.log(`[resolveProductIdsForSquareIds] ${unresolved.length} unresolved after mapping lookup`);
+
+    if (unresolved.length === 0) return result;
+
+    // 2) Lookup in products table
+    let directProducts;
+    try {
+        directProducts = await fetchProductsInBatches(unresolved);
+        console.log(`[resolveProductIdsForSquareIds] Found ${directProducts.length} direct products in products table`);
+    } catch (err) {
+        console.error('[resolveProductIdsForSquareIds] Failed during fetchProductsInBatches', err);
+        throw err;
+    }
+
+    for (const p of directProducts || []) {
+        if (p && p.square_id) {
+            result.set(p.square_id, p.id);
+            const idx = unresolved.indexOf(p.square_id);
+            if (idx >= 0) unresolved.splice(idx, 1);
+        }
+    }
+
+    console.log(`[resolveProductIdsForSquareIds] ${unresolved.length} still unresolved after product lookup`);
+
+    // 3) Insert fallback rows if still unresolved
+    if (unresolved.length > 0) {
+        const newProducts = unresolved.map(sqId => ({
+            square_id: sqId,
+            name: `Imported ${sqId}`,
+            gtin: null
+        }));
+
+        console.log(`[resolveProductIdsForSquareIds] Inserting ${newProducts.length} fallback products`);
+
+        const {data: inserted = [], error: insertErr} = await supabase
+            .from('products')
+            .insert(newProducts, {returning: 'representation'});
+
+        if (insertErr) {
+            console.error('[resolveProductIdsForSquareIds] Error inserting fallback products:', insertErr);
+            console.log('[resolveProductIdsForSquareIds] Retrying fetch for unresolved ids...');
+
+            try {
+                const retryProducts = await fetchProductsInBatches(unresolved);
+                console.log(`[resolveProductIdsForSquareIds] Retry fetched ${retryProducts.length} products`);
+                for (const p of retryProducts || []) {
+                    result.set(p.square_id, p.id);
                 }
-                console.log(`Retrying in ${backoff}ms... (${retries} retries left)`);
-                await delay(backoff);
-                backoff *= 2;
+            } catch (retryErr) {
+                console.error('[resolveProductIdsForSquareIds] Retry fetch also failed:', retryErr);
+                throw insertErr;
+            }
+        } else {
+            console.log(`[resolveProductIdsForSquareIds] Successfully inserted ${inserted.length} fallback products`);
+            for (const p of inserted || []) {
+                result.set(p.square_id, p.id);
             }
         }
-        await delay(200);
     }
+
+    // 4) Upsert mappings
+    const mappingRows = [];
+    for (const id of uniqueIds) {
+        if (result.has(id)) {
+            mappingRows.push({square_id: id, product_id: result.get(id)});
+        }
+    }
+
+    if (mappingRows.length) {
+        console.log(`[resolveProductIdsForSquareIds] Upserting ${mappingRows.length} mapping rows`);
+        const {error: mapUpsertErr} = await supabase
+            .from('square_catalog_mapping')
+            .upsert(mappingRows, {onConflict: 'square_id'});
+        if (mapUpsertErr) {
+            console.error('[resolveProductIdsForSquareIds] Error upserting mapping rows:', mapUpsertErr);
+            throw mapUpsertErr;
+        }
+    }
+
+    console.log(`[resolveProductIdsForSquareIds] Completed. Total resolved: ${result.size}`);
+    return result;
 }
 
 
-// --- LOCATIONS ---
+// -------------------- Product/mapping sync (GTIN-first) --------------------
+
+// Create or ensure canonical products for GTINs and create mapping rows for all variations/items
+async function syncProductsAndMappings({variations = [], items = [], variationGtin = new Map(), itemNameById = new Map()}) {
+    // 1) Group variation square IDs by GTIN
+    const gtinToSquareIds = new Map();
+    for (const v of variations) {
+        if (!v || !v.id) continue;
+        const vid = v.id;
+        const gtin = variationGtin.get(vid) || null;
+        if (gtin) {
+            const arr = gtinToSquareIds.get(gtin) || [];
+            arr.push(vid);
+            gtinToSquareIds.set(gtin, arr);
+        }
+    }
+
+    // 2) Prepare canonical products
+    const productsToUpsert = [];
+
+    // a) GTIN-based products
+    for (const [gtin, sqIds] of gtinToSquareIds.entries()) {
+        const sampleSquareId = sqIds[0];
+        const sampleVariation = variations.find(v => v.id === sampleSquareId);
+        let candidateName = null;
+        if (sampleVariation) {
+            const parentId = sampleVariation.item_variation_data?.item_id;
+            candidateName = parentId ? itemNameById.get(parentId) : null;
+            if (!candidateName) candidateName = sampleVariation.item_variation_data?.name || null;
+        }
+        productsToUpsert.push({
+            square_id: sampleSquareId,
+            gtin: gtin,
+            name: candidateName || `Product ${gtin}`,
+        });
+    }
+
+    // b) Items without GTIN (fallback)
+    for (const item of items.filter(i => i && i.id)) {
+        productsToUpsert.push({
+            square_id: item.id,
+            gtin: null,
+            name: item.item_data?.name || null,
+        });
+    }
+
+    // 3) Upsert using square_id as the conflict key
+    if (productsToUpsert.length) {
+        const {data: upserted, error} = await supabase
+            .from('products')
+            .upsert(productsToUpsert, {onConflict: 'square_id'})
+            .select('id, square_id, gtin');
+
+        if (error) {
+            console.error('Error upserting canonical products by square_id:', error);
+            throw error;
+        }
+    }
+
+    // 4) Fetch canonical product IDs
+    const canonicalProducts = await supabase
+        .from('products')
+        .select('id, square_id, gtin')
+        .in('square_id', productsToUpsert.map(p => p.square_id))
+        .then(res => res.data || []);
+
+    const squareIdToProductId = new Map(canonicalProducts.map(p => [p.square_id, p.id]));
+
+    // 5) Build mapping rows for all variations
+    const mappingRows = [];
+
+    for (const v of variations) {
+        const prodId = squareIdToProductId.get(v.id) || null;
+        if (prodId) {
+            mappingRows.push({
+                square_id: v.id,
+                product_id: prodId,
+                variation_id: v.id
+            });
+        }
+    }
+
+    // 6) Upsert mapping rows
+    if (mappingRows.length) {
+        const {error: mapErr} = await supabase
+            .from('square_catalog_mapping')
+            .upsert(mappingRows, {onConflict: 'square_id'});
+
+        if (mapErr) {
+            console.error('Error upserting square_catalog_mapping rows:', mapErr);
+            throw mapErr;
+        }
+    }
+
+    console.log(`syncProductsAndMappings completed: ${productsToUpsert.length} products, ${mappingRows.length} mappings`);
+}
+
+
+// -------------------- Existing upsert helpers (updated) --------------------
+
+// Note: these functions are left for backward compatibility and small use-cases.
+// The primary canonical behavior occurs via syncProductsAndMappings in fullSync.
+
+// Upsert locations (unchanged)
 async function upsertLocations(locations) {
     if (!locations || locations.length === 0) {
         console.log('No locations to upsert.')
@@ -271,7 +469,7 @@ async function upsertLocations(locations) {
     }
 
     const toUpsert = locations.map(loc => {
-        const { id: square_id, name, address } = loc
+        const {id: square_id, name, address} = loc
         let fullAddress = null
         if (address) {
             fullAddress = [
@@ -283,17 +481,17 @@ async function upsertLocations(locations) {
                 address.country,
             ].filter(Boolean).join(', ')
         }
-        return { square_id, name, address: fullAddress }
+        return {square_id, name, address: fullAddress}
     })
 
-    // Upsert in a single batch (it should be small)
-    const { error } = await supabase
+    const {error} = await supabase
         .from('locations')
-        .upsert(toUpsert, { onConflict: 'square_id' })
+        .upsert(toUpsert, {onConflict: 'square_id'})
     if (error) console.error('Error upserting locations:', error)
     else console.log(`Upserted ${toUpsert.length} location(s)`)
 }
 
+// Upsert sales — use resolveProductIdsForSquareIds
 async function upsertSales(orders) {
     if (!orders || orders.length === 0) {
         console.log('No sales to upsert.');
@@ -312,16 +510,20 @@ async function upsertSales(orders) {
         }
     }
 
-    const foundProducts = await fetchProductsBySquareIds([...new Set(variationSquareIds)]);
-    const foundProductMap = new Map(foundProducts.map(p => [p.square_id, p.id]));
+    // Resolve product IDs for the catalog object ids
+    const productMap = await resolveProductIdsForSquareIds([...new Set(variationSquareIds)]);
+    if (!productMap || productMap.size === 0) {
+        console.warn('No product mappings resolved for sales; skipping.');
+        return;
+    }
 
-    const { data: foundLocations, error: locError } = await supabase
+    const {data: foundLocations, error: locError} = await supabase
         .from('locations')
         .select('id, square_id')
         .in('square_id', [...new Set(locationSquareIds)]);
-    if (locError) throw locError;
 
-    const foundLocationMap = new Map(foundLocations.map(l => [l.square_id, l.id]));
+    if (locError) throw locError;
+    const foundLocationMap = new Map((foundLocations || []).map(l => [l.square_id, l.id]));
 
     const rows = [];
     for (const order of orders) {
@@ -329,8 +531,11 @@ async function upsertSales(orders) {
         const locLocalId = foundLocationMap.get(order.location_id);
 
         for (const lineItem of (order.line_items || [])) {
-            const prodLocalId = foundProductMap.get(lineItem.catalog_object_id);
-            if (!locLocalId || !prodLocalId) continue;
+            const prodLocalId = productMap.get(lineItem.catalog_object_id);
+            if (!locLocalId || !prodLocalId) {
+                if (!prodLocalId) console.warn(`No canonical product for catalog id ${lineItem.catalog_object_id}; skipping sale row.`);
+                continue;
+            }
 
             rows.push({
                 square_id: `${order.id}-${lineItem.uid || lineItem.catalog_object_id}`,
@@ -347,13 +552,14 @@ async function upsertSales(orders) {
         return;
     }
 
-    const { error } = await supabase
+    const {error} = await supabase
         .from('sales')
-        .upsert(rows, { onConflict: 'square_id' });
+        .upsert(rows, {onConflict: 'square_id'});
     if (error) console.error('Error upserting sales:', error);
     else console.log(`Upserted ${rows.length} sales rows`);
 }
 
+// Upsert inventory counts (modified to use resolveProductIdsForSquareIds)
 async function upsertInventoryCounts(counts) {
     console.log(`Starting to upsert ${counts.length} inventory counts...`)
     if (!counts || counts.length === 0) return
@@ -362,15 +568,15 @@ async function upsertInventoryCounts(counts) {
     const variationSquareIds = [...new Set(counts.map(c => c.catalog_object_id).filter(Boolean))]
     const locationSquareIds = [...new Set(counts.map(c => c.location_id).filter(Boolean))]
 
-    // 2) fetch local product ids (variations) & locations
-    const foundProducts = await fetchProductsBySquareIds(variationSquareIds)
-    if (!foundProducts || foundProducts.length === 0) {
-        console.warn('No products found for provided variation ids.')
+    // 2) Resolve canonical product ids for variations
+    const productMap = await resolveProductIdsForSquareIds(variationSquareIds);
+    if (!productMap || productMap.size === 0) {
+        console.warn('No products resolved for provided variation ids.')
         return
     }
-    const foundProductMap = new Map(foundProducts.map(p => [p.square_id, p.id]))
 
-    const { data: foundLocations, error: locError } = await supabase
+    // 3) fetch local locations
+    const {data: foundLocations = [], error: locError} = await supabase
         .from('locations')
         .select('id, square_id')
         .in('square_id', locationSquareIds.length ? locationSquareIds : ['__none__'])
@@ -381,7 +587,7 @@ async function upsertInventoryCounts(counts) {
     }
     const foundLocationMap = new Map((foundLocations || []).map(l => [l.square_id, l.id]))
 
-    // 3) Normalize counts: keep only the latest calculated_at per (variation, location, state)
+    // 4) Normalize counts: keep only the latest calculated_at per (variation, location, state)
     const latestMap = new Map()
     for (const c of counts) {
         if (!c.catalog_object_id || !c.location_id) continue
@@ -389,17 +595,17 @@ async function upsertInventoryCounts(counts) {
         const existing = latestMap.get(key)
         const t = c.calculated_at ? new Date(c.calculated_at).getTime() : 0
         if (!existing || (existing._t || 0) < t) {
-            latestMap.set(key, { ...c, _t: t })
+            latestMap.set(key, {...c, _t: t})
         }
     }
 
-    // 4) Build upsert rows but ONLY for IN_STOCK (on-hand)
+    // 5) Build upsert rows but ONLY for IN_STOCK (on-hand)
     const upsertRows = []
     for (const val of latestMap.values()) {
         if ((val.state || '').toUpperCase() !== 'IN_STOCK') continue
 
         const locLocalId = foundLocationMap.get(val.location_id)
-        const prodLocalId = foundProductMap.get(val.catalog_object_id)
+        const prodLocalId = productMap.get(val.catalog_object_id)
 
         if (!locLocalId || !prodLocalId) {
             console.warn(`Missing mapping for variation ${val.catalog_object_id} or location ${val.location_id}; skipping.`)
@@ -408,10 +614,9 @@ async function upsertInventoryCounts(counts) {
 
         const quantity = Math.max(0, parseInt(val.quantity, 10) || 0)
 
-        // If your DB forces uniqueness on square_id only, consider using combined square id:
-        // square_id: `${val.catalog_object_id}-${val.location_id}`
+        // Use composite natural key via upsert on (product_id, location_id)
         upsertRows.push({
-            square_id: val.catalog_object_id,      // prefer variation id; see note below
+            square_id: `${val.catalog_object_id}-${val.location_id}`, // keep variant-specific key
             location_id: locLocalId,
             product_id: prodLocalId,
             quantity,
@@ -424,13 +629,13 @@ async function upsertInventoryCounts(counts) {
         return
     }
 
-    // 5) Upsert using composite natural key (location_id + product_id)
+    // 6) Upsert using composite natural key (location_id + product_id)
     const chunkSize = 100
     for (let i = 0; i < upsertRows.length; i += chunkSize) {
         const chunk = upsertRows.slice(i, i + chunkSize)
-        const { error } = await supabase
+        const {error} = await supabase
             .from('inventory')
-            .upsert(chunk, { onConflict: 'location_id,product_id' })
+            .upsert(chunk, {onConflict: 'location_id,product_id'})
 
         if (error) {
             console.error('Error upserting inventory chunk:', error)
@@ -443,27 +648,25 @@ async function upsertInventoryCounts(counts) {
     console.log('Finished upserting inventory counts (IN_STOCK only).')
 }
 
+// -------------------- Product change / deletion handler --------------------
 
-// --- PRODUCT deletion handler (delete by square_id) ---
+// When a catalog object is deleted in Square, remove only the mapping (do not delete canonical product)
 async function upsertProductOrDelete(item) {
     if (!item) return
     if (item.is_deleted) {
-        const { error } = await supabase.from('products').delete().eq('square_id', item.id)
-        if (error) console.error('Error deleting product by square_id:', error)
-        else console.log(`Deleted product (square_id=${item.id}) from DB`)
+        const {error} = await supabase
+            .from('square_catalog_mapping')
+            .delete()
+            .eq('square_id', item.id)
+        if (error) console.error('Error deleting mapping for deleted catalog object:', error)
+        else console.log(`Removed mapping for deleted catalog object ${item.id}`)
         return
     }
-    // If not deleted, upsert: item could be ITEM or ITEM_VARIATION; handle appropriately
-    if (item.type === 'ITEM') {
-        await upsertProducts([item])
-    } else if (item.type === 'ITEM_VARIATION') {
-        await upsertVariations([item])
-    } else {
-        console.log('Unhandled catalog object type in upsertProductOrDelete:', item.type)
-    }
+    // If not deleted, ignore: fullSync handles upserting mapping & products
+    console.log('Received non-deleted item change; fullSync flow will reconcile this object on next run.')
 }
 
-// --- Fetch single catalog object from Square (unchanged) ---
+// -------------------- Fetch single catalog object --------------------
 async function fetchCatalogObject(objectId) {
     const url = `https://connect.squareup.com/v2/catalog/object/${objectId}`
     const options = {
@@ -488,31 +691,8 @@ async function fetchCatalogObject(objectId) {
     }
 }
 
-async function fetchProductsBySquareIds(ids) {
-    const chunkSize = 100  // or smaller, adjust as needed
-    let allProducts = []
-
-    for (let i = 0; i < ids.length; i += chunkSize) {
-        const chunk = ids.slice(i, i + chunkSize)
-        const { data, error } = await supabase
-            .from('products')
-            .select('id, square_id')
-            .in('square_id', chunk)
-
-        if (error) {
-            console.error('Error fetching products chunk:', error)
-            // handle error or throw
-            throw error
-        }
-        if (data) allProducts = allProducts.concat(data)
-    }
-    return allProducts
-}
-
-
-// --- PRODUCTS + VARIATIONS ---
 async function productSync() {
-    console.log("Starting product + variation sync...")
+    console.log("Starting product + variation sync (GTIN-first)...")
     const baseUrl = 'https://connect.squareup.com/v2/catalog/list?types=ITEM,ITEM_VARIATION,CATEGORY'
     const options = {
         headers: {
@@ -536,15 +716,12 @@ async function productSync() {
     const items = allObjects.filter(obj => obj.type === 'ITEM')
     const variations = allObjects.filter(obj => obj.type === 'ITEM_VARIATION')
 
-    const itemNameById = new Map(items.map(i => [i.id, i.item_data?.name || null]))
-
-    await upsertProducts(items)
-    await upsertVariations(variations, itemNameById)
+    const {variationGtin, itemNameById} = buildCatalogMaps(allObjects)
+    await syncProductsAndMappings({variations, items, variationGtin, itemNameById})
 
     console.log("Finished product sync")
 }
 
-// --- LOCATIONS ---
 async function locationSync() {
     console.log("Starting locations sync...")
     const options = {
@@ -564,7 +741,6 @@ async function locationSync() {
     console.log("Finished locations sync")
 }
 
-// --- SALES ---
 async function salesSync() {
     console.log("Starting sales sync...")
     const options = {
@@ -591,9 +767,8 @@ async function salesSync() {
     console.log("Finished sales sync")
 }
 
-// --- INVENTORY ---
 async function inventorySync() {
-    console.log("Starting inventory sync...")
+    console.log("Starting inventory sync (GTIN-aware)...")
     const baseUrl = 'https://connect.squareup.com/v2/catalog/list?types=ITEM_VARIATION'
     const options = {
         headers: {
@@ -603,6 +778,7 @@ async function inventorySync() {
         },
     }
 
+    // Fetch variations
     let allObjects = []
     let cursor = null
     do {
@@ -616,16 +792,15 @@ async function inventorySync() {
     const variations = allObjects.filter(obj => obj.type === 'ITEM_VARIATION')
     const variationIds = variations.map(v => v.id)
 
+    // Fetch counts in batches
     const allCounts = await fetchInventoryCountsBatch(variationIds, options)
     await upsertInventoryCounts(allCounts)
 
     console.log("Finished inventory sync")
 }
 
-
-// --- FULL SYNC flow (items + variations + inventory + locations) ---
 async function fullSync() {
-    console.log('Fetching all catalog objects from Square...')
+    console.log('Starting fullSync: fetching all catalog objects from Square...')
     const baseUrl = 'https://connect.squareup.com/v2/catalog/list?types=ITEM,ITEM_VARIATION,CATEGORY'
     const options = {
         headers: {
@@ -652,17 +827,11 @@ async function fullSync() {
     const items = allObjects.filter(obj => obj.type === 'ITEM');
     const variations = allObjects.filter(obj => obj.type === 'ITEM_VARIATION');
 
-    // Build parent name map (item_id -> item name)
-    const itemNameById = new Map(
-        items.map(i => [i.id, i.item_data?.name || null])
-    );
+    // Build maps and upsert canonical products + mappings (GTIN-first)
+    const {variationGtin, itemNameById} = buildCatalogMaps(allObjects);
+    await syncProductsAndMappings({variations, items, variationGtin, itemNameById});
 
-    // Upsert items and variations
-    await upsertProducts(items);
-    await upsertVariations(variations, itemNameById); // <-- pass the map
-
-
-    // === Locations Sync ===
+    // Locations
     console.log('Fetching locations...')
     const locRes = await fetchWithRetry('https://connect.squareup.com/v2/locations', options)
     if (!locRes.ok) throw new Error(`Failed to fetch locations: ${locRes.status}`)
@@ -670,18 +839,17 @@ async function fullSync() {
     const locations = locData.locations || []
     await upsertLocations(locations)
 
-    // Build location id array to pass to fetchRecentSales (Square location ids)
+    // Sales (last 2 weeks)
     const locationIds = locations.map(l => l.id).filter(Boolean)
     if (locationIds.length === 0) {
         console.warn('No locations returned from Square; skipping recent sales sync.')
     } else {
-        // === Sales Sync (last 2 weeks) ===
         console.log('Fetching sales for the last 2 weeks for locations:', locationIds)
         const recentSales = await fetchRecentSales(options, locationIds)
         await upsertSales(recentSales)
     }
 
-    // === Inventory Sync ===
+    // Inventory counts
     console.log('Fetching inventory counts in parallel batches...')
     const variationIds = variations.map(v => v.id)
     const allCounts = await fetchInventoryCountsBatch(variationIds, options)
@@ -690,6 +858,7 @@ async function fullSync() {
     console.log('Full sync completed successfully.')
 }
 
+// CLI entrypoint
 if (process.argv[1] === __filename) {
     ; (async () => {
         try {
@@ -725,11 +894,10 @@ if (process.argv[1] === __filename) {
     })()
 }
 
-
 export {
     fetchWithRetry,
-    upsertProducts,
-    upsertVariations,
+    // upsertProducts,         // retained for compatibility (not used in GTIN-first flow)
+    // upsertVariations,       // retained for compatibility (not used in GTIN-first flow)
     upsertInventoryCounts,
     upsertLocations,
     upsertProductOrDelete,
@@ -738,5 +906,9 @@ export {
     productSync,
     locationSync,
     salesSync,
-    inventorySync
+    inventorySync,
+    resolveProductIdsForSquareIds,
+    syncProductsAndMappings,
+    buildCatalogMaps,
+    fetchInventoryCountsBatch
 }
