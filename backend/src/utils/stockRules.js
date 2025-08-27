@@ -1,13 +1,13 @@
 // utils/stockRules.js
 
 const CATEGORY_RULES = [
-    {category: 'beer', keywords: ['ipa', 'lager', 'ale', 'stout', 'pilsner', 'beer']},
-    {category: 'wine', keywords: ['cabernet', 'pinot', 'merlot', 'zinfandel', 'wine', 'chardonnay', 'sauvignon']},
-    {category: 'liquor', keywords: ['vodka', 'whiskey', 'tequila', 'rum', 'gin', 'bourbon', 'scotch', 'brandy']},
-    {category: 'seltzer', keywords: ['seltzer', 'white claw', 'truly', 'hard seltzer']},
-    {category: 'ready-to-drink', keywords: ['twisted tea', 'high noon', 'cutwater', 'cocktail', 'on the rocks']},
-    {category: 'tobacco', keywords: ['cigar', 'backwood', 'grabba', 'tobacco', 'leaf']},
-    {category: 'nicotine', keywords: ['juul', 'zyn', 'lucy', 'velo', 'on!', 'oeo', 'pouch']},
+    {category: 'Beer', keywords: ['ipa', 'lager', 'ale', 'stout', 'pilsner', 'beer']},
+    {category: 'Wine', keywords: ['cabernet', 'pinot', 'merlot', 'zinfandel', 'wine', 'chardonnay', 'sauvignon']},
+    {category: 'Liquor', keywords: ['vodka', 'whiskey', 'tequila', 'rum', 'gin', 'bourbon', 'scotch', 'brandy']},
+    {category: 'Seltzer', keywords: ['seltzer', 'white claw', 'truly', 'hard seltzer']},
+    {category: 'Ready-to-drink', keywords: ['twisted tea', 'high noon', 'cutwater', 'cocktail', 'on the rocks']},
+    {category: 'Tobacco', keywords: ['cigar', 'backwood', 'grabba', 'tobacco', 'leaf']},
+    {category: 'Nicotine', keywords: ['juul', 'zyn', 'lucy', 'velo', 'on!', 'oeo', 'pouch']},
 ];
 
 function normalize(s) {

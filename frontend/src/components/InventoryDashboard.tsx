@@ -26,6 +26,7 @@ export const InventoryDashboard: React.FC = () => {
   const [locations, setLocations] = useState<{id: string; name: string}[]>([])
   const [loadingLow, setLoadingLow] = useState(false)
   const [activeLocation, setActiveLocation] = useState<string>('all')
+  const [activeCategory, setActiveCategory] = useState<string>('all')
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage] = useState(20)
   const [modalVisible, setModalVisible] = useState(false)
@@ -34,10 +35,16 @@ export const InventoryDashboard: React.FC = () => {
   const [syncType, setSyncType] = useState<'full' | 'products' | 'locations' | 'sales' | 'inventory'>('full')
   const [syncMessage, setSyncMessage] = useState<string>('')
 
-  // reset page when location filter or items change
+  // reset page and category when location or items change
   useEffect(() => {
     setCurrentPage(1)
+    setActiveCategory('all')
   }, [activeLocation, lowStockItems])
+
+  // also reset page when category changes
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [activeCategory])
 
   const openModal = () => {
     setModalVisible(true)
@@ -73,7 +80,6 @@ export const InventoryDashboard: React.FC = () => {
       // flatten and normalize product shape
       const allLowStockProducts = apiLocations.flatMap((loc: any) =>
         (loc.products || []).map((prod: any) => {
-          // normalize product id (maybe backend returns product_id or id)
           const id = prod.id || prod.product_id || prod.productId || null
           return {
             ...prod,
@@ -83,9 +89,7 @@ export const InventoryDashboard: React.FC = () => {
           }
         })
       )
-        // filter defensively
         .filter((p: any) => {
-          // ensure we have a numeric salesPerDay to compare
           const salesPerDay = Number(p.salesPerDay || 0)
           const name = (p.name || '').toString()
           const isScratcher = scratcherNames.some(s => name.toLowerCase().includes(s))
@@ -130,11 +134,33 @@ export const InventoryDashboard: React.FC = () => {
     }
   }
 
-  // Filter & sort
-  const filtered = activeLocation === 'all'
+  // -----------------------------------------------------------------------
+  // Derive data for current location -> categories -> items
+  // -----------------------------------------------------------------------
+  const locationFiltered = activeLocation === 'all'
     ? lowStockItems
     : lowStockItems.filter(p => p.locationId === activeLocation)
-  const sorted = [...filtered].sort((a, b) => (b.salesPerDay ?? 0) - (a.salesPerDay ?? 0))
+
+  // categories for current location (normalize null/undefined -> "Uncategorized")
+  const categoriesSet = new Set<string>()
+  locationFiltered.forEach(p => categoriesSet.add((p.category || 'Uncategorized') as string))
+  const categories = ['all', ...Array.from(categoriesSet).sort()]
+
+  // clamp activeCategory if it no longer exists (e.g., after a sync)
+  useEffect(() => {
+    if (activeCategory !== 'all' && !categories.includes(activeCategory)) {
+      setActiveCategory('all')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categories.join('|')]) // run when categories change
+
+  const categoryFiltered = activeCategory === 'all'
+    ? locationFiltered
+    : locationFiltered.filter(p => ((p.category || 'Uncategorized') === activeCategory))
+
+  const sorted = [...categoryFiltered].sort((a, b) =>
+    (a.name || '').toString().trim().localeCompare((b.name || '').toString().trim(), undefined, {numeric: true, sensitivity: 'base'})
+  )
 
   // Pagination
   const totalPages = Math.max(1, Math.ceil(sorted.length / itemsPerPage))
@@ -160,12 +186,13 @@ export const InventoryDashboard: React.FC = () => {
         </CardContent>
       </Card>
 
-      <Tabs value={activeLocation} onValueChange={(v) => {setActiveLocation(v); setCurrentPage(1)}}>
+      {/* Outer tabs: locations */}
+      <Tabs value={activeLocation} onValueChange={(v) => {setActiveLocation(v); setCurrentPage(1); setActiveCategory('all')}}>
         <TabsList>
           <TabsTrigger key="all" value="all">All</TabsTrigger>
-          {locations
-            .filter(l => ['MAIN ST MARKET', 'Surf Liquor', 'Wolf Liquor'].includes(l.name))
-            .map(l => <TabsTrigger key={l.id} value={l.id}>{l.name}</TabsTrigger>)}
+          {locations.filter(l => ['MAIN ST MARKET', 'Surf Liquor', 'Wolf Liquor'].includes(l.name)).map(l => (
+            <TabsTrigger key={l.id} value={l.id}>{l.name}</TabsTrigger>
+          ))}
         </TabsList>
 
         <TabsContent value={activeLocation}>
@@ -173,6 +200,17 @@ export const InventoryDashboard: React.FC = () => {
             <p>Loading...</p>
           ) : (
             <>
+              {/* Inner tabs: categories for the selected location */}
+              <div className="mb-4">
+                <Tabs value={activeCategory} onValueChange={(v) => setActiveCategory(v)}>
+                  <TabsList>
+                    {categories.map(cat => (
+                      <TabsTrigger key={cat} value={cat}>{cat === 'all' ? 'All Categories' : cat}</TabsTrigger>
+                    ))}
+                  </TabsList>
+                </Tabs>
+              </div>
+
               {totalPages > 1 && (
                 <div className="flex justify-center items-center gap-4 my-2 text-sm text-muted-foreground">
                   <button className="p-1 rounded-full hover:bg-gray-100 disabled:opacity-50" disabled={currentPage === 1} onClick={() => goToPage(currentPage - 1)}><ChevronLeft size={16} /></button>
@@ -188,7 +226,6 @@ export const InventoryDashboard: React.FC = () => {
                     const unitsPerCase = item.unitsPerCase ?? undefined
                     const casesToOrder = unitsPerCase ? Math.ceil(suggestedUnits / unitsPerCase) : null
                     const currentStock = item.inventory === null || item.inventory === undefined ? '—' : item.inventory
-                    // fallback low_stock calculation if backend didn't provide it
                     const lowStockFlag = (item.low_stock !== undefined && item.low_stock !== null)
                       ? Boolean(item.low_stock)
                       : ((item.inventory ?? 0) < (item.minimumStock ?? Infinity))
@@ -237,57 +274,28 @@ export const InventoryDashboard: React.FC = () => {
         </TabsContent>
       </Tabs>
 
+      {/* modal unchanged (keep your existing modal JSX) */}
       {modalVisible && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          {/* Dimmed background */}
           <div
             className={`fixed inset-0 bg-black transition-opacity duration-300 ${modalAnimate ? 'opacity-50' : 'opacity-0'}`}
             onClick={() => !syncing && closeModal()}
           />
-
-          {/* Modal card */}
-          <Card
-            className={`relative z-10 w-96 p-6 space-y-4 bg-white rounded-lg shadow-lg transform transition-all duration-300
-        ${modalAnimate ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`}
-          >
-            {/* X button */}
-            <button
-              onClick={closeModal}
-              disabled={syncing}
-              className="absolute top-2 right-2 w-8 h-8 flex items-center justify-center text-gray-700 hover:text-gray-900 text-xl font-bold rounded-full bg-gray-200 hover:bg-gray-300 shadow-md focus:outline-none"
-
-            >
-              ×
-            </button>
+          <Card className={`relative z-10 w-96 p-6 space-y-4 bg-white rounded-lg shadow-lg transform transition-all duration-300 ${modalAnimate ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`}>
+            <button onClick={closeModal} disabled={syncing} className="absolute top-2 right-2 w-8 h-8 flex items-center justify-center text-gray-700 hover:text-gray-900 text-xl font-bold rounded-full bg-gray-200 hover:bg-gray-300 shadow-md focus:outline-none">×</button>
             <CardTitle>Sync Data from Square</CardTitle>
             <CardContent>
-              <p className="text-sm text-muted-foreground">
-                This will pull the latest data from Square into the database and update the dashboard with the most recent information.
-              </p>
-
-              {/* Modern button-style selection */}
+              <p className="text-sm text-muted-foreground">This will pull the latest data from Square into the database and update the dashboard with the most recent information.</p>
               <div className="flex flex-wrap gap-2 mt-4">
                 {['full', 'products', 'locations', 'sales', 'inventory'].map(option => (
-                  <button
-                    key={option}
-                    type="button"
-                    onClick={() => setSyncType(option as any)}
-                    disabled={syncing}
-                    className={`px-4 py-2 rounded-lg font-medium transition-all duration-200
-                ${syncType === option ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'}`}
-                  >
+                  <button key={option} type="button" onClick={() => setSyncType(option as any)} disabled={syncing} className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${syncType === option ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'}`}>
                     {option.charAt(0).toUpperCase() + option.slice(1)}
                   </button>
                 ))}
               </div>
-
               {syncMessage && <p className="mt-4 text-sm">{syncMessage}</p>}
-
-              {/* Action buttons */}
               <div className="flex justify-end gap-2 mt-6">
-                <Button onClick={handleSync} disabled={syncing}>
-                  {syncing ? 'Syncing...' : 'Confirm Sync'}
-                </Button>
+                <Button onClick={handleSync} disabled={syncing}>{syncing ? 'Syncing...' : 'Confirm Sync'}</Button>
               </div>
             </CardContent>
           </Card>
