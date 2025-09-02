@@ -75,7 +75,11 @@ export const InventoryDashboard: React.FC = () => {
     try {
       const res = await fetch(`${import.meta.env.VITE_API_URL}/api/low-stock`)
       const data = await res.json()
-      const apiLocations = data.locations || []
+
+      // Only keep specific locations 
+      const apiLocations = (data.locations || []).filter((loc: any) => loc.name === 'Wolf Liquor' || loc.name === 'MAIN ST MARKET' || loc.name === 'Surf Liquor')
+
+      console.log(apiLocations)
 
       // flatten and normalize product shape
       const allLowStockProducts = apiLocations.flatMap((loc: any) =>
@@ -105,6 +109,7 @@ export const InventoryDashboard: React.FC = () => {
       setLoadingLow(false)
     }
   }
+
 
   useEffect(() => {fetchLowStock()}, [])
 
@@ -190,7 +195,7 @@ export const InventoryDashboard: React.FC = () => {
       <Tabs value={activeLocation} onValueChange={(v) => {setActiveLocation(v); setCurrentPage(1); setActiveCategory('all')}}>
         <TabsList>
           <TabsTrigger key="all" value="all">All</TabsTrigger>
-          {locations.filter(l => ['MAIN ST MARKET', 'Surf Liquor', 'Wolf Liquor'].includes(l.name)).map(l => (
+          {locations.map(l => (
             <TabsTrigger key={l.id} value={l.id}>{l.name}</TabsTrigger>
           ))}
         </TabsList>

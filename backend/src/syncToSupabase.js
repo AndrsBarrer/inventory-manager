@@ -1,10 +1,13 @@
-// square-sync.js
+// syncToSupabase.js
 import fetch from 'node-fetch'
 import {supabase} from './supabaseClient.js'
 import url from 'url'
 
 const __filename = url.fileURLToPath(import.meta.url)
 const __dirname = url.fileURLToPath(new URL('.', import.meta.url))
+
+import {fetchAllProducts} from './server.js';
+import {salesSync} from './sales-sync.js';
 
 function delay(ms) {
     return new Promise(resolve => setTimeout(resolve, ms))
@@ -83,109 +86,7 @@ async function fetchInventoryCountsBatch(variationIds, options) {
     return results;
 }
 
-async function fetchRecentSales(options, locationIds = []) {
-    if (!Array.isArray(locationIds) || locationIds.length === 0) {
-        throw new Error('fetchRecentSales requires an array of locationIds (max 10).');
-    }
-    // Square limits to 10 location IDs per request
-    const locs = locationIds.slice(0, 10);
 
-    const now = new Date();
-    const startDate = new Date(now);
-    startDate.setDate(now.getDate() - 14);
-
-    const startISO = startDate.toISOString();
-    const endISO = now.toISOString();
-
-    const sales = [];
-    let cursor = null;
-    let page = 0;
-    const maxPages = 50; // safety to avoid infinite loops
-
-    do {
-        const body = {
-            return_entries: false,
-            limit: 1000,
-            location_ids: locs,
-            query: {
-                filter: {
-                    date_time_filter: {
-                        closed_at: {
-                            start_at: startISO,
-                            end_at: endISO
-                        }
-                    },
-                    state_filter: {
-                        states: ['COMPLETED']
-                    }
-                },
-                sort: {
-                    sort_field: 'CLOSED_AT',
-                    sort_order: 'DESC'
-                }
-            },
-            cursor: cursor || undefined
-        };
-
-        const res = await fetchWithRetry('https://connect.squareup.com/v2/orders/search', {
-            method: 'POST',
-            headers: {
-                ...options.headers,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(body)
-        });
-
-        if (!res.ok) {
-            const text = await res.text();
-            throw new Error(`Failed to fetch sales: ${res.status} - ${text}`);
-        }
-
-        const data = await res.json();
-        if (data.orders && data.orders.length) {
-            sales.push(...data.orders);
-            console.log(`Fetched ${data.orders.length} orders (page ${page + 1})`);
-        } else {
-            console.log(`No orders returned on page ${page + 1}`);
-        }
-
-        cursor = data.cursor || null;
-        page += 1;
-    } while (cursor && page < maxPages);
-
-    if (page >= maxPages) {
-        console.warn('fetchRecentSales stopped after maxPages; there may be more results.');
-    }
-
-    return sales;
-}
-
-// -------------------- Catalog mapping helpers --------------------
-
-// Build quick lookup maps from all catalog objects
-function buildCatalogMaps(allObjects) {
-    const itemById = new Map();
-    const variationById = new Map();
-    const variationGtin = new Map(); // variationId -> upc/gtin if present
-    const variationToItem = new Map(); // variationId -> parent item id
-    const itemNameById = new Map();
-
-    for (const obj of allObjects) {
-        if (!obj || !obj.type) continue;
-        if (obj.type === 'ITEM') {
-            const name = obj.item_data?.name || null;
-            itemById.set(obj.id, obj);
-            itemNameById.set(obj.id, name);
-        } else if (obj.type === 'ITEM_VARIATION') {
-            variationById.set(obj.id, obj);
-            const v = obj.item_variation_data || {};
-            if (v.upc) variationGtin.set(obj.id, v.upc);
-            if (v.item_id) variationToItem.set(obj.id, v.item_id);
-        }
-    }
-
-    return {itemById, variationById, variationGtin, variationToItem, itemNameById};
-}
 
 async function fetchMappingsInBatches(squareIds) {
     const chunkSize = 200;
@@ -219,11 +120,11 @@ async function fetchMappingsInBatches(squareIds) {
     return results;
 }
 
-async function fetchProductsInBatches(squareIds) {
+async function fetchProductsInBatchesWithSquareIds(squareIds) {
     const chunkSize = 200;
     const results = [];
 
-    console.log(`[fetchProductsInBatches] Resolving ${squareIds.length} product ids in chunks of ${chunkSize}`);
+    console.log(`[fetchProductsInBatchesWithSquareIds] Resolving ${squareIds.length} product ids in chunks of ${chunkSize}`);
 
     for (let i = 0; i < squareIds.length; i += chunkSize) {
         const chunk = squareIds.slice(i, i + chunkSize);
@@ -234,16 +135,16 @@ async function fetchProductsInBatches(squareIds) {
                 .in('square_id', chunk);
 
             if (error) {
-                console.error(`[fetchProductsInBatches] Error on batch ${i / chunkSize + 1}:`, {
+                console.error(`[fetchProductsInBatchesWithSquareIds] Error on batch ${i / chunkSize + 1}:`, {
                     chunkSize: chunk.length,
                     error
                 });
                 throw error;
             }
-            console.log(`[fetchProductsInBatches] Batch ${i / chunkSize + 1} succeeded (${chunk.length} ids)`);
+            console.log(`[fetchProductsInBatchesWithSquareIds] Batch ${i / chunkSize + 1} succeeded (${chunk.length} ids)`);
             results.push(...data);
         } catch (err) {
-            console.error(`[fetchProductsInBatches] Unexpected failure on batch ${i / chunkSize + 1}:`, err);
+            console.error(`[fetchProductsInBatchesWithSquareIds] Unexpected failure on batch ${i / chunkSize + 1}:`, err);
             throw err;
         }
     }
@@ -252,39 +153,39 @@ async function fetchProductsInBatches(squareIds) {
 }
 
 async function resolveProductIdsForSquareIds(squareIds) {
-    console.log(`[resolveProductIdsForSquareIds] Called with ${squareIds?.length || 0} ids`);
+    console.log(`[] Called with ${squareIds?.length || 0} ids`);
 
     const uniqueIds = [...new Set((squareIds || []).filter(Boolean))];
     if (uniqueIds.length === 0) {
-        console.log(`[resolveProductIdsForSquareIds] No valid ids, returning empty Map`);
+        console.log(`[] No valid ids, returning empty Map`);
         return new Map();
     }
 
-    console.log(`[resolveProductIdsForSquareIds] ${uniqueIds.length} unique ids after deduplication`);
+    console.log(`[] ${uniqueIds.length} unique ids after deduplication`);
 
     // 1) Query existing mappings
     let mappings;
     try {
         mappings = await fetchMappingsInBatches(uniqueIds);
-        console.log(`[resolveProductIdsForSquareIds] Found ${mappings.length} existing mappings`);
+        console.log(`[] Found ${mappings.length} existing mappings`);
     } catch (err) {
-        console.error('[resolveProductIdsForSquareIds] Failed during fetchMappingsInBatches', err);
+        console.error('[] Failed during fetchMappingsInBatches', err);
         throw err;
     }
 
     const result = new Map(mappings.map(m => [m.square_id, m.product_id]));
     const unresolved = uniqueIds.filter(id => !result.has(id));
-    console.log(`[resolveProductIdsForSquareIds] ${unresolved.length} unresolved after mapping lookup`);
+    console.log(`[] ${unresolved.length} unresolved after mapping lookup`);
 
     if (unresolved.length === 0) return result;
 
     // 2) Lookup in products table
     let directProducts;
     try {
-        directProducts = await fetchProductsInBatches(unresolved);
-        console.log(`[resolveProductIdsForSquareIds] Found ${directProducts.length} direct products in products table`);
+        directProducts = await fetchProductsInBatchesWithSquareIds(unresolved);
+        console.log(`[] Found ${directProducts.length} direct products in products table`);
     } catch (err) {
-        console.error('[resolveProductIdsForSquareIds] Failed during fetchProductsInBatches', err);
+        console.error('[] Failed during fetchProductsInBatchesWithSquareIds', err);
         throw err;
     }
 
@@ -296,7 +197,7 @@ async function resolveProductIdsForSquareIds(squareIds) {
         }
     }
 
-    console.log(`[resolveProductIdsForSquareIds] ${unresolved.length} still unresolved after product lookup`);
+    console.log(`[] ${unresolved.length} still unresolved after product lookup`);
 
     // 3) Insert fallback rows if still unresolved
     if (unresolved.length > 0) {
@@ -306,28 +207,28 @@ async function resolveProductIdsForSquareIds(squareIds) {
             gtin: null
         }));
 
-        console.log(`[resolveProductIdsForSquareIds] Inserting ${newProducts.length} fallback products`);
+        console.log(`[] Inserting ${newProducts.length} fallback products`);
 
         const {data: inserted = [], error: insertErr} = await supabase
             .from('products')
             .insert(newProducts, {returning: 'representation'});
 
         if (insertErr) {
-            console.error('[resolveProductIdsForSquareIds] Error inserting fallback products:', insertErr);
-            console.log('[resolveProductIdsForSquareIds] Retrying fetch for unresolved ids...');
+            console.error('[] Error inserting fallback products:', insertErr);
+            console.log('[] Retrying fetch for unresolved ids...');
 
             try {
-                const retryProducts = await fetchProductsInBatches(unresolved);
-                console.log(`[resolveProductIdsForSquareIds] Retry fetched ${retryProducts.length} products`);
+                const retryProducts = await fetchProductsInBatchesWithSquareIds(unresolved);
+                console.log(`[] Retry fetched ${retryProducts.length} products`);
                 for (const p of retryProducts || []) {
                     result.set(p.square_id, p.id);
                 }
             } catch (retryErr) {
-                console.error('[resolveProductIdsForSquareIds] Retry fetch also failed:', retryErr);
+                console.error('[] Retry fetch also failed:', retryErr);
                 throw insertErr;
             }
         } else {
-            console.log(`[resolveProductIdsForSquareIds] Successfully inserted ${inserted.length} fallback products`);
+            //console.log(`[] Successfully inserted ${inserted.length} fallback products`);
             for (const p of inserted || []) {
                 result.set(p.square_id, p.id);
             }
@@ -343,17 +244,17 @@ async function resolveProductIdsForSquareIds(squareIds) {
     }
 
     if (mappingRows.length) {
-        console.log(`[resolveProductIdsForSquareIds] Upserting ${mappingRows.length} mapping rows`);
+        console.log(`[] Upserting ${mappingRows.length} mapping rows`);
         const {error: mapUpsertErr} = await supabase
             .from('square_catalog_mapping')
             .upsert(mappingRows, {onConflict: 'square_id'});
         if (mapUpsertErr) {
-            console.error('[resolveProductIdsForSquareIds] Error upserting mapping rows:', mapUpsertErr);
+            console.error('[] Error upserting mapping rows:', mapUpsertErr);
             throw mapUpsertErr;
         }
     }
 
-    console.log(`[resolveProductIdsForSquareIds] Completed. Total resolved: ${result.size}`);
+    console.log(`[] Completed. Total resolved: ${result.size}`);
     return result;
 }
 
@@ -455,12 +356,6 @@ async function syncProductsAndMappings({variations = [], items = [], variationGt
     console.log(`syncProductsAndMappings completed: ${productsToUpsert.length} products, ${mappingRows.length} mappings`);
 }
 
-
-// -------------------- Existing upsert helpers (updated) --------------------
-
-// Note: these functions are left for backward compatibility and small use-cases.
-// The primary canonical behavior occurs via syncProductsAndMappings in fullSync.
-
 // Upsert locations (unchanged)
 async function upsertLocations(locations) {
     if (!locations || locations.length === 0) {
@@ -491,73 +386,7 @@ async function upsertLocations(locations) {
     else console.log(`Upserted ${toUpsert.length} location(s)`)
 }
 
-// Upsert sales — use resolveProductIdsForSquareIds
-async function upsertSales(orders) {
-    if (!orders || orders.length === 0) {
-        console.log('No sales to upsert.');
-        return;
-    }
 
-    const variationSquareIds = [];
-    const locationSquareIds = [];
-
-    for (const order of orders) {
-        if (order.location_id) locationSquareIds.push(order.location_id);
-        for (const lineItem of (order.line_items || [])) {
-            if (lineItem.catalog_object_id) {
-                variationSquareIds.push(lineItem.catalog_object_id);
-            }
-        }
-    }
-
-    // Resolve product IDs for the catalog object ids
-    const productMap = await resolveProductIdsForSquareIds([...new Set(variationSquareIds)]);
-    if (!productMap || productMap.size === 0) {
-        console.warn('No product mappings resolved for sales; skipping.');
-        return;
-    }
-
-    const {data: foundLocations, error: locError} = await supabase
-        .from('locations')
-        .select('id, square_id')
-        .in('square_id', [...new Set(locationSquareIds)]);
-
-    if (locError) throw locError;
-    const foundLocationMap = new Map((foundLocations || []).map(l => [l.square_id, l.id]));
-
-    const rows = [];
-    for (const order of orders) {
-        const saleDate = order.closed_at || order.created_at || null;
-        const locLocalId = foundLocationMap.get(order.location_id);
-
-        for (const lineItem of (order.line_items || [])) {
-            const prodLocalId = productMap.get(lineItem.catalog_object_id);
-            if (!locLocalId || !prodLocalId) {
-                if (!prodLocalId) console.warn(`No canonical product for catalog id ${lineItem.catalog_object_id}; skipping sale row.`);
-                continue;
-            }
-
-            rows.push({
-                square_id: `${order.id}-${lineItem.uid || lineItem.catalog_object_id}`,
-                location_id: locLocalId,
-                product_id: prodLocalId,
-                quantity: parseInt(lineItem.quantity, 10) || 0,
-                sale_date: saleDate
-            });
-        }
-    }
-
-    if (rows.length === 0) {
-        console.log('No valid sales rows to upsert.');
-        return;
-    }
-
-    const {error} = await supabase
-        .from('sales')
-        .upsert(rows, {onConflict: 'square_id'});
-    if (error) console.error('Error upserting sales:', error);
-    else console.log(`Upserted ${rows.length} sales rows`);
-}
 
 // Upsert inventory counts (modified to use resolveProductIdsForSquareIds)
 async function upsertInventoryCounts(counts) {
@@ -648,79 +477,556 @@ async function upsertInventoryCounts(counts) {
     console.log('Finished upserting inventory counts (IN_STOCK only).')
 }
 
-// -------------------- Product change / deletion handler --------------------
+function buildCatalogMaps(allObjects) {
+    const categoryNameById = {};
 
-// When a catalog object is deleted in Square, remove only the mapping (do not delete canonical product)
-async function upsertProductOrDelete(item) {
-    if (!item) return
-    if (item.is_deleted) {
-        const {error} = await supabase
-            .from('square_catalog_mapping')
-            .delete()
-            .eq('square_id', item.id)
-        if (error) console.error('Error deleting mapping for deleted catalog object:', error)
-        else console.log(`Removed mapping for deleted catalog object ${item.id}`)
-        return
-    }
-    // If not deleted, ignore: fullSync handles upserting mapping & products
-    console.log('Received non-deleted item change; fullSync flow will reconcile this object on next run.')
-}
-
-// -------------------- Fetch single catalog object --------------------
-async function fetchCatalogObject(objectId) {
-    const url = `https://connect.squareup.com/v2/catalog/object/${objectId}`
-    const options = {
-        headers: {
-            'Square-Version': '2023-08-16',
-            'Authorization': `Bearer ${process.env.SQUARE_ACCESS_TOKEN}`,
-            'Content-Type': 'application/json',
-        },
-    }
-
-    try {
-        const res = await fetchWithRetry(url, options)
-        if (!res.ok) {
-            console.error('Failed to fetch catalog object:', await res.text())
-            return null
+    allObjects.forEach(obj => {
+        if (obj.type === 'CATEGORY' && obj.category_data) {
+            // Extract the name from the object, use it to index the object
+            categoryNameById[obj.id] = obj.category_data.name || 'Unknown';
         }
-        const data = await res.json()
-        return data.object
-    } catch (error) {
-        console.error('Error fetching catalog object with retry:', error)
-        return null
-    }
+    });
+
+    return {categoryNameById};
 }
 
 async function productSync() {
-    console.log("Starting product + variation sync (GTIN-first)...")
-    const baseUrl = 'https://connect.squareup.com/v2/catalog/list?types=ITEM,ITEM_VARIATION,CATEGORY'
+    const baseUrl = 'https://connect.squareup.com/v2/catalog/list?types=ITEM,ITEM_VARIATION,CATEGORY';
     const options = {
         headers: {
             'Square-Version': '2023-08-16',
             'Authorization': `Bearer ${process.env.SQUARE_ACCESS_TOKEN}`,
             'Content-Type': 'application/json',
         },
+    };
+
+    let allObjects = [];
+    let cursor = null;
+
+    // Fetch all catalog objects
+    do {
+        const res = await fetchWithRetry(`${baseUrl}${cursor ? `&cursor=${cursor}` : ''}`, options);
+        if (!res.ok) throw new Error(`Failed to fetch catalog list: ${res.status}`);
+        const data = await res.json();
+        allObjects = allObjects.concat(data.objects || []);
+        cursor = data.cursor || null;
+    } while (cursor);
+
+    const items = allObjects.filter(obj => obj.type === 'ITEM');
+    /*
+    {
+        type: "ITEM",
+        id: "BHJ27JXVN7BIRNQTKKTV7XG6",
+        updated_at: "2025-08-07T05:22:19.879Z",
+        created_at: "2021-06-18T05:14:38.369Z",
+        version: 1754544139879,
+        is_deleted: false,
+        present_at_all_locations: false,
+        present_at_location_ids: [
+            "3P98D5NV1A3SM",
+        ],
+        item_data: {
+            name: "Clipper Menthol",
+            is_taxable: true,
+            category_id: "M3FKIKSLUVR35MHUEPTDW3WI",
+            variations: [
+            {
+                type: "ITEM_VARIATION",
+                id: "CINXD7HYNAHHUQJ44IHG26V2",
+                updated_at: "2025-08-07T05:22:19.879Z",
+                created_at: "2022-09-04T18:21:54.166Z",
+                version: 1754544139879,
+                is_deleted: false,
+                present_at_all_locations: false,
+                present_at_location_ids: [
+                "3P98D5NV1A3SM",
+                ],
+                item_variation_data: {
+                item_id: "BHJ27JXVN7BIRNQTKKTV7XG6",
+                name: "",
+                sku: "0812615004713",
+                ordinal: 1,
+                pricing_type: "FIXED_PRICING",
+                price_money: {
+                    amount: 349,
+                    currency: "USD",
+                },
+                sellable: true,
+                stockable: true,
+                channels: [
+                    "CH_V3xNgKpBeB51Rhciliuf23IlNQlT2nqJMpn7BQlQuYC",
+                ],
+                },
+            },
+            ],
+            product_type: "REGULAR",
+            ecom_available: false,
+            ecom_visibility: "UNAVAILABLE",
+            channels: [
+            "CH_V3xNgKpBeB51Rhciliuf23IlNQlT2nqJMpn7BQlQuYC",
+            ],
+            is_archived: false,
+        },
+        }
+    */
+    const variations = allObjects.filter(obj => obj.type === 'ITEM_VARIATION');
+    /*
+    {
+        type: "ITEM_VARIATION",
+        id: "TN63JZV4IHXNQVGAOTX37J2C",
+        updated_at: "2025-08-07T05:21:28.134Z",
+        created_at: "2022-09-04T18:21:54.166Z",
+        version: 1754544088134,
+        is_deleted: false,
+        present_at_all_locations: false,
+        present_at_location_ids: [
+            "LQZQSFETPS7Q3",
+            "3P98D5NV1A3SM",
+        ],
+        item_variation_data: {
+            item_id: "R5IDKLIHB5E6PLBHYPDGIL3A",
+            name: "",
+            sku: "6001087364614",
+            ordinal: 1,
+            pricing_type: "FIXED_PRICING",
+            price_money: {
+            amount: 499,
+            currency: "USD",
+            },
+            sellable: true,
+            stockable: true,
+            channels: [
+            "CH_V3xNgKpBeB51Rhciliuf23IlNQlT2nqJMpn7BQlQuYC",
+            ],
+        },
+        }
+    */
+    const categories = allObjects.filter(obj => obj.type === 'CATEGORY');
+    /* 
+    {
+        type: "CATEGORY",
+        id: "OTZXNKGPIDSYNWTELIFONW5U",
+        updated_at: "2025-08-07T05:19:52.388Z",
+        created_at: "2023-04-07T04:01:15.992Z",
+        version: 1754543992388,
+        is_deleted: false,
+        catalog_v1_ids: [
+            {
+            catalog_v1_id: "J3AX476LD42VHNCTZUOHEY2S",
+            location_id: "L7V67GRNNH6XM",
+            },
+        ],
+        present_at_all_locations: true,
+        category_data: {
+            name: "Mezcal",
+            ordinal: 0,
+            is_top_level: true,
+        },
+    }
+    */
+    console.log(allObjects);
+
+    console.log(`Raw counts from Square API:`);
+    console.log(`- Items: ${items.length}`);
+    console.log(`- Variations: ${variations.length}`);
+    console.log(`- Categories: ${categories.length}`);
+    console.log(`- Total objects: ${allObjects.length}`);
+
+    // Build maps for processing
+    const {categoryNameById} = buildCatalogMaps(categories);
+
+    // Sync products first
+    await syncProducts({items, categoryNameById});
+
+    // Then sync variations (depends on products)
+    await syncProductVariations({items, variations});
+
+    console.log("Finished product sync");
+}
+
+
+
+// async function syncProducts({items, categoryNameById}) {
+//     console.log(`Syncing ${items.length} products...`);
+
+//     // Fetch existing products from your DB
+//     const existingProducts = await fetchAllProducts();
+
+//     const productsToUpsert = items.map(item => {
+//         /*
+//         {
+//             type: "ITEM",
+//             id: "BHJ27JXVN7BIRNQTKKTV7XG6",
+//             present_at_location_ids: [
+//                 "3P98D5NV1A3SM",
+//             ],
+//             item_data: {
+//                 name: "Clipper Menthol",
+//                 is_taxable: true,
+//                 category_id: "M3FKIKSLUVR35MHUEPTDW3WI",
+//                 variations: [
+//                 {
+//                     type: "ITEM_VARIATION",
+//                     id: "CINXD7HYNAHHUQJ44IHG26V2",
+//                     present_at_location_ids: [
+//                         "3P98D5NV1A3SM",
+//                     ],
+//                     item_variation_data: {
+//                         item_id: "BHJ27JXVN7BIRNQTKKTV7XG6",
+//                         name: "",
+//                         sku: "0812615004713",
+//                         ordinal: 1,
+//                         pricing_type: "FIXED_PRICING",
+//                         price_money: {
+//                             amount: 349,
+//                             currency: "USD",
+//                         }
+//                     },
+//                 }]
+//             }   
+//             ],
+//                 product_type: "REGULAR",
+//             },
+//         }
+//         */
+//         const itemData = item.item_data || {};
+
+//         // Get the category name from the map that was built, using the category_id as the index
+//         let categoryName = itemData.category_id ? categoryNameById[itemData.category_id] : null;
+
+//         // If category is null, reuse existing product's category by name
+//         if (!categoryName) {
+//             let existingProduct = existingProducts.find(p => p.name === itemData.name);
+//             categoryName = existingProduct?.category || null;
+//         }
+
+//         return {
+//             square_id: item.id,
+//             name: itemData.name || 'Unknown Product',
+//             category: categoryName,
+//             square_updated_at: item.updated_at ? new Date(item.updated_at).toISOString() : null,
+//             synced_at: new Date().toISOString()
+//         };
+//     });
+
+//     if (productsToUpsert.length === 0) {
+//         console.log('No products to sync');
+//         return;
+//     }
+
+//     // Batch upsert products, limit to 100 at a time so it doesnt crash
+//     const batchSize = 100;
+//     const page = 0;
+//     for (let i = 0; i < productsToUpsert.length; i += batchSize) {
+
+//         console.log(`Upserting page ${page} of product variations.`);
+
+//         const batch = productsToUpsert.slice(i, i + batchSize);
+
+//         const {error} = await supabase
+//             .from('products')
+//             .upsert(batch, {
+//                 onConflict: 'square_id',
+//                 ignoreDuplicates: false
+//             });
+
+//         if (error) {
+//             console.error(`Error upserting products batch ${Math.floor(i / batchSize) + 1}:`, error);
+//             throw error;
+//         }
+//     }
+
+//     console.log(`Successfully synced ${productsToUpsert.length} products`);
+// }
+
+async function syncProducts({items, categoryNameById}) {
+    console.log(`Syncing ${items.length} products...`);
+
+    // Fetch existing products from your DB
+    const existingProducts = await fetchAllProducts();
+
+    // Fetch existing variations to understand the data relationships
+    const {data: existingVariations = [], error: varError} = await supabase
+        .from('product_variations')
+        .select('product_id, square_variation_id');
+
+    if (varError) {
+        console.error('Error fetching existing variations:', varError);
+        throw varError;
     }
 
-    let allObjects = []
-    let cursor = null
+    // Create lookup maps to handle the data integrity issues
+    const existingBySquareId = new Map();
+    const existingByName = new Map();
+    const existingByGtin = new Map();
+    const variationToProductMap = new Map();
 
-    do {
-        const res = await fetchWithRetry(`${baseUrl}${cursor ? `&cursor=${cursor}` : ''}`, options)
-        if (!res.ok) throw new Error(`Failed to fetch catalog list: ${res.status}`)
-        const data = await res.json()
-        allObjects = allObjects.concat(data.objects || [])
-        cursor = data.cursor || null
-    } while (cursor)
+    // Build variation lookup (variation_id -> product_id)
+    existingVariations.forEach(v => {
+        if (v.square_variation_id && v.product_id) {
+            variationToProductMap.set(v.square_variation_id, v.product_id);
+        }
+    });
 
-    const items = allObjects.filter(obj => obj.type === 'ITEM')
-    const variations = allObjects.filter(obj => obj.type === 'ITEM_VARIATION')
+    existingProducts.forEach(p => {
+        if (p.square_id) {
+            existingBySquareId.set(p.square_id, p);
+        }
+        if (p.gtin) {
+            existingByGtin.set(p.gtin, p);
+        }
+        // For name-based lookup, prefer products that have categories
+        if (p.name) {
+            const existing = existingByName.get(p.name);
+            if (!existing || (!existing.category && p.category)) {
+                existingByName.set(p.name, p);
+            }
+        }
+    });
 
-    const {variationGtin, itemNameById} = buildCatalogMaps(allObjects)
-    await syncProductsAndMappings({variations, items, variationGtin, itemNameById})
+    const productsToUpsert = items.map(item => {
+        const itemData = item.item_data || {};
 
-    console.log("Finished product sync")
+        // Get the category name from Square
+        let categoryName = itemData.category_id ? categoryNameById[itemData.category_id] : null;
+
+        // If category is null from Square, try to preserve existing category data
+        if (!categoryName) {
+            let existingProduct = null;
+
+            // Strategy 1: Try exact square_id match
+            existingProduct = existingBySquareId.get(item.id);
+
+            // Strategy 2: If this item ID appears as a variation_id, get the actual product
+            if (!existingProduct) {
+                const productId = variationToProductMap.get(item.id);
+                if (productId) {
+                    existingProduct = existingProducts.find(p => p.id === productId);
+                    console.log(`Found product via variation mapping: ${item.id} -> ${productId} (${existingProduct?.name})`);
+                }
+            }
+
+            // Strategy 3: Try to match by name and look for the best candidate
+            if (!existingProduct) {
+                const nameMatches = existingProducts.filter(p => p.name === itemData.name);
+                if (nameMatches.length === 1) {
+                    existingProduct = nameMatches[0];
+                } else if (nameMatches.length > 1) {
+                    // Multiple matches - prefer one with category, then most recent sync
+                    existingProduct = nameMatches.reduce((best, current) => {
+                        if (!best) return current;
+                        if (current.category && !best.category) return current;
+                        if (!current.category && best.category) return best;
+                        // Both have category or both don't - pick most recently synced
+                        return (current.synced_at || '') > (best.synced_at || '') ? current : best;
+                    }, null);
+                    console.log(`Multiple products found for "${itemData.name}", selected: ${existingProduct?.square_id} (category: ${existingProduct?.category})`);
+                }
+            }
+
+            // Use existing category if found
+            if (existingProduct && existingProduct.category) {
+                categoryName = existingProduct.category;
+                console.log(`Preserving category "${categoryName}" for "${itemData.name}" (Square ID: ${item.id})`);
+            }
+        }
+
+        return {
+            square_id: item.id,
+            name: itemData.name || 'Unknown Product',
+            category: categoryName,
+            square_updated_at: item.updated_at ? new Date(item.updated_at).toISOString() : null,
+            synced_at: new Date().toISOString()
+        };
+    });
+
+    if (productsToUpsert.length === 0) {
+        console.log('No products to sync');
+        return;
+    }
+
+    // Batch upsert products, limit to 100 at a time so it doesnt crash
+    const batchSize = 100;
+    for (let i = 0; i < productsToUpsert.length; i += batchSize) {
+        console.log(`Upserting batch ${Math.floor(i / batchSize) + 1} of products.`);
+
+        const batch = productsToUpsert.slice(i, i + batchSize);
+
+        const {error} = await supabase
+            .from('products')
+            .upsert(batch, {
+                onConflict: 'square_id',
+                ignoreDuplicates: false
+            });
+
+        if (error) {
+            console.error(`Error upserting products batch ${Math.floor(i / batchSize) + 1}:`, error);
+            throw error;
+        }
+    }
+
+    console.log(`Successfully synced ${productsToUpsert.length} products`);
 }
+
+
+async function syncProductVariations({items, variations}) {
+    console.log(`Starting with ${variations.length} variations...`);
+
+    const products = await fetchAllProducts();
+    /*
+    {
+        id: "0003068e-1c3a-420f-858f-2b75d786b93f",
+        name: "Trojan-ENZ Spermicide 3ct",
+        sku: null,
+        category: null,
+        square_id: "4HM7TCHVAMQWDN3DM4ZN5CKE",
+    }
+    */
+    const productIdMap = {};
+    products.forEach(p => {
+        if (p.square_id && p.id) {
+            productIdMap[p.square_id] = p.id;
+        }
+    });
+
+    /* sample of an item in items
+    {
+        type: "ITEM",
+        id: "BHJ27JXVN7BIRNQTKKTV7XG6",
+        updated_at: "2025-08-07T05:22:19.879Z",
+        created_at: "2021-06-18T05:14:38.369Z",
+        version: 1754544139879,
+        is_deleted: false,
+        present_at_all_locations: false,
+        present_at_location_ids: [
+            "3P98D5NV1A3SM",
+        ],
+        item_data: {
+            name: "Clipper Menthol",
+            is_taxable: true,
+            category_id: "M3FKIKSLUVR35MHUEPTDW3WI",
+            variations: [
+            {
+                type: "ITEM_VARIATION",
+                id: "CINXD7HYNAHHUQJ44IHG26V2",
+                updated_at: "2025-08-07T05:22:19.879Z",
+                created_at: "2022-09-04T18:21:54.166Z",
+                version: 1754544139879,
+                is_deleted: false,
+                present_at_all_locations: false,
+                present_at_location_ids: [
+                "3P98D5NV1A3SM",
+                ],
+                item_variation_data: {
+                item_id: "BHJ27JXVN7BIRNQTKKTV7XG6",
+                name: "",
+                sku: "0812615004713",
+                ordinal: 1,
+                pricing_type: "FIXED_PRICING",
+                price_money: {
+                    amount: 349,
+                    currency: "USD",
+                },
+                sellable: true,
+                stockable: true,
+                channels: [
+                    "CH_V3xNgKpBeB51Rhciliuf23IlNQlT2nqJMpn7BQlQuYC",
+                ],
+                },
+            },
+            ],
+            product_type: "REGULAR",
+            ecom_available: false,
+            ecom_visibility: "UNAVAILABLE",
+            channels: [
+            "CH_V3xNgKpBeB51Rhciliuf23IlNQlT2nqJMpn7BQlQuYC",
+            ],
+            is_archived: false,
+        },
+        }
+    */
+
+    /* sample of an item variation inside of variations
+    {
+        type: "ITEM_VARIATION",
+        id: "TN63JZV4IHXNQVGAOTX37J2C",
+        updated_at: "2025-08-07T05:21:28.134Z",
+        created_at: "2022-09-04T18:21:54.166Z",
+        version: 1754544088134,
+        is_deleted: false,
+        present_at_all_locations: false,
+        present_at_location_ids: [
+            "LQZQSFETPS7Q3",
+            "3P98D5NV1A3SM",
+        ],
+        item_variation_data: {
+            item_id: "R5IDKLIHB5E6PLBHYPDGIL3A",
+            name: "",
+            sku: "6001087364614",
+            ordinal: 1,
+            pricing_type: "FIXED_PRICING",
+            price_money: {
+                amount: 499,
+                currency: "USD",
+            },
+            sellable: true,
+            stockable: true,
+            channels: [
+            "CH_V3xNgKpBeB51Rhciliuf23IlNQlT2nqJMpn7BQlQuYC",
+            ],
+        },
+        }
+    */
+    const variationsToUpsert = variations
+        .filter(variation => {
+            // Only include variations whose parent item exists in our products table
+            const parentItemId = variation.item_variation_data?.item_id;
+            return parentItemId && productIdMap[parentItemId]; // checks mapping exists
+
+        })
+        .map(variation => {
+            const variationData = variation.item_variation_data || {};
+            const parentItemId = variationData.item_id;
+
+            return {
+                product_id: productIdMap[parentItemId],
+                square_variation_id: variation.id,
+                name: variationData.name || null,
+                sku: variationData.sku || null,
+                price: variationData.price_money ?
+                    (variationData.price_money.amount / 100).toString() : null, // Convert cents to dollars
+                square_version: variation.version,
+                is_deleted: variation.is_deleted || false
+            };
+        });
+
+    if (variationsToUpsert.length === 0) {
+        console.log('No variations to sync');
+        return;
+    }
+
+    // Batch upsert variations
+    const batchSize = 100;
+    for (let i = 0; i < variationsToUpsert.length; i += batchSize) {
+        const batch = variationsToUpsert.slice(i, i + batchSize);
+
+        const {error} = await supabase
+            .from('product_variations')
+            .upsert(batch, {
+                onConflict: 'square_variation_id',
+                ignoreDuplicates: false
+            });
+
+        if (error) {
+            console.error(`Error upserting variations batch ${Math.floor(i / batchSize) + 1}:`, error);
+            throw error;
+        }
+    }
+
+    console.log(`Successfully synced ${variationsToUpsert.length} variations`);
+}
+
+
 
 async function locationSync() {
     console.log("Starting locations sync...")
@@ -741,32 +1047,341 @@ async function locationSync() {
     console.log("Finished locations sync")
 }
 
-async function salesSync() {
-    console.log("Starting sales sync...")
-    const options = {
-        headers: {
-            'Square-Version': '2023-08-16',
-            'Authorization': `Bearer ${process.env.SQUARE_ACCESS_TOKEN}`,
-            'Content-Type': 'application/json',
-        },
-    }
+//--------------------------------------------------------------------------------------------------------------------------
+// async function fetchRecentSales(options, locationIds = []) {
+//     if (!Array.isArray(locationIds) || locationIds.length === 0) {
+//         throw new Error('fetchRecentSales requires an array of locationIds (max 10).');
+//     }
+//     // Square limits to 10 location IDs per request
+//     const locs = locationIds.slice(0, 10);
 
-    const locRes = await fetchWithRetry('https://connect.squareup.com/v2/locations', options)
-    if (!locRes.ok) throw new Error(`Failed to fetch locations: ${locRes.status}`)
-    const locData = await locRes.json()
-    const locationIds = locData.locations.map(l => l.id).filter(Boolean)
+//     const now = new Date();
+//     const startDate = new Date(now);
+//     startDate.setDate(now.getDate() - 14);
 
-    if (!locationIds.length) {
-        console.warn("No locations found; skipping sales sync.")
-        return
-    }
+//     const startISO = startDate.toISOString();
+//     const endISO = now.toISOString();
 
-    const recentSales = await fetchRecentSales(options, locationIds)
-    await upsertSales(recentSales)
+//     const sales = [];
+//     let cursor = null;
+//     let page = 0;
+//     const maxPages = 50; // safety to avoid infinite loops
 
-    console.log("Finished sales sync")
-}
+//     do {
+//         const body = {
+//             return_entries: false,
+//             limit: 1000,
+//             location_ids: locs,
+//             query: {
+//                 filter: {
+//                     date_time_filter: {
+//                         closed_at: {
+//                             start_at: startISO,
+//                             end_at: endISO
+//                         }
+//                     },
+//                     state_filter: {
+//                         states: ['COMPLETED']
+//                     }
+//                 },
+//                 sort: {
+//                     sort_field: 'CLOSED_AT',
+//                     sort_order: 'DESC'
+//                 }
+//             },
+//             cursor: cursor || undefined
+//         };
 
+//         const res = await fetchWithRetry('https://connect.squareup.com/v2/orders/search', {
+//             method: 'POST',
+//             headers: {
+//                 ...options.headers,
+//                 'Content-Type': 'application/json'
+//             },
+//             body: JSON.stringify(body)
+//         });
+
+//         if (!res.ok) {
+//             const text = await res.text();
+//             throw new Error(`Failed to fetch sales: ${res.status} - ${text}`);
+//         }
+
+//         const data = await res.json();
+//         if (data.orders && data.orders.length) {
+//             sales.wpush(...data.orders);
+
+//             /*
+//             data.orders[i]:
+//             {
+//                 id: "dG0TYOYvmOZPZaQb47MiBeysJmWZY",
+//                 location_id: "3P98D5NV1A3SM",
+//                 line_items: [
+//                     {
+//                     uid: "4e51d827-26c5-45a2-be18-2538cf242b1f",
+//                     catalog_object_id: "TX4N67R6VIYPU6W24CP4BEZS", (in my db this is square_id in products table)
+//                     catalog_version: 1754957952819,
+//                     quantity: "2",
+//                     name: "American Spirit Black",
+//                     variation_name: "Regular",
+//                     base_price_money: {
+//                         amount: 1649,
+//                         currency: "USD",
+//                     },
+//                     gross_sales_money: {
+//                         amount: 3298,
+//                         currency: "USD",
+//                     },
+//                     total_tax_money: {
+//                         amount: 0,
+//                         currency: "USD",
+//                     },
+//                     total_discount_money: {
+//                         amount: 0,
+//                         currency: "USD",
+//                     },
+//                     total_money: {
+//                         amount: 3298,
+//                         currency: "USD",
+//                     },
+//                     variation_total_price_money: {
+//                         amount: 3298,
+//                         currency: "USD",
+//                     },
+//                     item_type: "ITEM",
+//                     total_service_charge_money: {
+//                         amount: 0,
+//                         currency: "USD",
+//                     },
+//                     },
+//                     {
+//                     uid: "516f7505-93e3-4a6a-8d01-6e7b0ab29f4a",
+//                     catalog_object_id: "B7AGZ3B6NHW44J2XWLVP6GOY",
+//                     catalog_version: 1754544424803,
+//                     quantity: "2",
+//                     name: "Bic small",
+//                     variation_name: "",
+//                     base_price_money: {
+//                         amount: 249,
+//                         currency: "USD",
+//                     },
+//                     gross_sales_money: {
+//                         amount: 498,
+//                         currency: "USD",
+//                     },
+//                     total_tax_money: {
+//                         amount: 0,
+//                         currency: "USD",
+//                     },
+//                     total_discount_money: {
+//                         amount: 0,
+//                         currency: "USD",
+//                     },
+//                     total_money: {
+//                         amount: 498,
+//                         currency: "USD",
+//                     },
+//                     variation_total_price_money: {
+//                         amount: 498,
+//                         currency: "USD",
+//                     },
+//                     item_type: "ITEM",
+//                     total_service_charge_money: {
+//                         amount: 0,
+//                         currency: "USD",
+//                     },
+//                     },
+//                 ],
+//                 created_at: "2025-08-19T21:15:46.809Z",
+//                 updated_at: "2025-08-19T21:15:49.000Z",
+//                 state: "COMPLETED",
+//                 version: 5,
+//                 total_tax_money: {
+//                     amount: 0,
+//                     currency: "USD",
+//                 },
+//                 total_discount_money: {
+//                     amount: 0,
+//                     currency: "USD",
+//                 },
+//                 total_tip_money: {
+//                     amount: 0,
+//                     currency: "USD",
+//                 },
+//                 total_money: {
+//                     amount: 3796,
+//                     currency: "USD",
+//                 },
+//                 closed_at: "2025-08-19T21:15:47.697Z",
+//                 tenders: [
+//                     {
+//                     id: "bfTNi37FZuX6mzLceD28IaQqDiVZY",
+//                     location_id: "3P98D5NV1A3SM",
+//                     transaction_id: "dG0TYOYvmOZPZaQb47MiBeysJmWZY",
+//                     created_at: "2025-08-19T21:15:47Z",
+//                     amount_money: {
+//                         amount: 3796,
+//                         currency: "USD",
+//                     },
+//                     type: "CASH",
+//                     cash_details: {
+//                         buyer_tendered_money: {
+//                         amount: 3796,
+//                         currency: "USD",
+//                         },
+//                         change_back_money: {
+//                         amount: 0,
+//                         currency: "USD",
+//                         },
+//                     },
+//                     payment_id: "bfTNi37FZuX6mzLceD28IaQqDiVZY",
+//                     },
+//                 ],
+//                 total_service_charge_money: {
+//                     amount: 0,
+//                     currency: "USD",
+//                 },
+//                 net_amounts: {
+//                     total_money: {
+//                     amount: 3796,
+//                     currency: "USD",
+//                     },
+//                     tax_money: {
+//                     amount: 0,
+//                     currency: "USD",
+//                     },
+//                     discount_money: {
+//                     amount: 0,
+//                     currency: "USD",
+//                     },
+//                     tip_money: {
+//                     amount: 0,
+//                     currency: "USD",
+//                     },
+//                     service_charge_money: {
+//                     amount: 0,
+//                     currency: "USD",
+//                     },
+//                 },
+//                 source: {
+//                 },
+//                 net_amount_due_money: {
+//                     amount: 0,
+//                     currency: "USD",
+//                 },
+//                 }
+
+//             */
+//             console.log(`Fetched ${data.orders.length} orders (page ${page + 1})`);
+//         } else {
+//             console.log(`No orders returned on page ${page + 1}`);
+//         }
+
+//         cursor = data.cursor || null;
+//         page += 1;
+//     } while (cursor && page < maxPages);
+
+//     if (page >= maxPages) {
+//         console.warn('fetchRecentSales stopped after maxPages; there may be more results.');
+//     }
+
+//     return sales;
+// }
+
+// Upsert sales
+// async function upsertSales(orders) {
+//     if (!orders || orders.length === 0) {
+//         console.log('No sales to upsert.');
+//         return;
+//     }
+
+//     const variationSquareIds = [];
+//     const locationSquareIds = [];
+
+//     for (const order of orders) {
+//         if (order.location_id) locationSquareIds.push(order.location_id);
+//         for (const lineItem of (order.line_items || [])) {
+//             if (lineItem.catalog_object_id) {
+//                 variationSquareIds.push(lineItem.catalog_object_id);
+//             }
+//         }
+//     }
+
+//     // Resolve product IDs for the catalog object ids
+//     const productMap = await resolveProductIdsForSquareIds([...new Set(variationSquareIds)]);
+//     if (!productMap || productMap.size === 0) {
+//         console.warn('No product mappings resolved for sales; skipping.');
+//         return;
+//     }
+
+//     const {data: foundLocations, error: locError} = await supabase
+//         .from('locations')
+//         .select('id, square_id')
+//         .in('square_id', [...new Set(locationSquareIds)]);
+
+//     if (locError) throw locError;
+//     const foundLocationMap = new Map((foundLocations || []).map(l => [l.square_id, l.id]));
+
+//     const rows = [];
+//     for (const order of orders) {
+//         const saleDate = order.closed_at || order.created_at || null;
+//         const locLocalId = foundLocationMap.get(order.location_id);
+
+//         for (const lineItem of (order.line_items || [])) {
+//             const prodLocalId = productMap.get(lineItem.catalog_object_id);
+//             if (!locLocalId || !prodLocalId) {
+//                 if (!prodLocalId) console.warn(`No canonical product for catalog id ${lineItem.catalog_object_id}; skipping sale row.`);
+//                 continue;
+//             }
+
+//             rows.push({
+//                 square_id: `${order.id}-${lineItem.uid || lineItem.catalog_object_id}`,
+//                 location_id: locLocalId,
+//                 product_id: prodLocalId,
+//                 quantity: parseInt(lineItem.quantity, 10) || 0,
+//                 sale_date: saleDate
+//             });
+//         }
+//     }
+
+//     if (rows.length === 0) {
+//         console.log('No valid sales rows to upsert.');
+//         return;
+//     }
+
+//     const {error} = await supabase
+//         .from('sales')
+//         .upsert(rows, {onConflict: 'square_id'});
+//     if (error) console.error('Error upserting sales:', error);
+//     else console.log(`Upserted ${rows.length} sales rows`);
+// }
+
+// async function salesSync() {
+//     console.log("Starting sales sync...")
+//     const options = {
+//         headers: {
+//             'Square-Version': '2023-08-16',
+//             'Authorization': `Bearer ${process.env.SQUARE_ACCESS_TOKEN}`,
+//             'Content-Type': 'application/json',
+//         },
+//     }
+
+//     const locRes = await fetchWithRetry('https://connect.squareup.com/v2/locations', options)
+//     if (!locRes.ok) throw new Error(`Failed to fetch locations: ${locRes.status}`)
+//     const locData = await locRes.json()
+//     const locationIds = locData.locations.map(l => l.id).filter(Boolean)
+
+//     if (!locationIds.length) {
+//         console.warn("No locations found; skipping sales sync.")
+//         return
+//     }
+
+//     const recentSales = await fetchRecentSales(options, locationIds)
+//     await upsertSales(recentSales)
+
+//     console.log("Finished sales sync")
+// }
+
+//--------------------------------------------------------------------------------------------------------------------------
 async function inventorySync() {
     console.log("Starting inventory sync (GTIN-aware)...")
     const baseUrl = 'https://connect.squareup.com/v2/catalog/list?types=ITEM_VARIATION'
@@ -800,63 +1415,20 @@ async function inventorySync() {
 }
 
 async function fullSync() {
-    console.log('Starting fullSync: fetching all catalog objects from Square...')
-    const baseUrl = 'https://connect.squareup.com/v2/catalog/list?types=ITEM,ITEM_VARIATION,CATEGORY'
-    const options = {
-        headers: {
-            'Square-Version': '2023-08-16',
-            'Authorization': `Bearer ${process.env.SQUARE_ACCESS_TOKEN}`,
-            'Content-Type': 'application/json',
-        },
-    }
+    console.log('Starting fullSync: fetching all catalog objects from Square...');
 
-    let allObjects = []
-    let cursor = null
+    await productSync();
 
-    do {
-        const res = await fetchWithRetry(`${baseUrl}${cursor ? `&cursor=${cursor}` : ''}`, options)
-        if (!res.ok) throw new Error(`Failed to fetch catalog list: ${res.status}`)
-        const data = await res.json()
-        allObjects = allObjects.concat(data.objects || [])
-        cursor = data.cursor || null
-    } while (cursor)
+    await locationSync();
 
-    console.log(`Fetched ${allObjects.length} catalog objects`)
+    await salesSync();
 
-    // Separate types
-    const items = allObjects.filter(obj => obj.type === 'ITEM');
-    const variations = allObjects.filter(obj => obj.type === 'ITEM_VARIATION');
+    await inventorySync();
 
-    // Build maps and upsert canonical products + mappings (GTIN-first)
-    const {variationGtin, itemNameById} = buildCatalogMaps(allObjects);
-    await syncProductsAndMappings({variations, items, variationGtin, itemNameById});
-
-    // Locations
-    console.log('Fetching locations...')
-    const locRes = await fetchWithRetry('https://connect.squareup.com/v2/locations', options)
-    if (!locRes.ok) throw new Error(`Failed to fetch locations: ${locRes.status}`)
-    const locData = await locRes.json()
-    const locations = locData.locations || []
-    await upsertLocations(locations)
-
-    // Sales (last 2 weeks)
-    const locationIds = locations.map(l => l.id).filter(Boolean)
-    if (locationIds.length === 0) {
-        console.warn('No locations returned from Square; skipping recent sales sync.')
-    } else {
-        console.log('Fetching sales for the last 2 weeks for locations:', locationIds)
-        const recentSales = await fetchRecentSales(options, locationIds)
-        await upsertSales(recentSales)
-    }
-
-    // Inventory counts
-    console.log('Fetching inventory counts in parallel batches...')
-    const variationIds = variations.map(v => v.id)
-    const allCounts = await fetchInventoryCountsBatch(variationIds, options)
-    await upsertInventoryCounts(allCounts)
-
-    console.log('Full sync completed successfully.')
+    console.log('Full sync completed successfully.');
 }
+
+
 
 // CLI entrypoint
 if (process.argv[1] === __filename) {
@@ -896,16 +1468,11 @@ if (process.argv[1] === __filename) {
 
 export {
     fetchWithRetry,
-    // upsertProducts,         // retained for compatibility (not used in GTIN-first flow)
-    // upsertVariations,       // retained for compatibility (not used in GTIN-first flow)
     upsertInventoryCounts,
     upsertLocations,
-    upsertProductOrDelete,
-    fetchCatalogObject,
     fullSync,
     productSync,
     locationSync,
-    salesSync,
     inventorySync,
     resolveProductIdsForSquareIds,
     syncProductsAndMappings,

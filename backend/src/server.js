@@ -12,14 +12,6 @@ import path from 'path'
 // Supabase client (server-only)
 import {supabase} from './supabaseClient.js'
 
-// ✅ Import sync helper functions
-import {
-    upsertProductOrDelete,
-    upsertInventoryCounts,
-    upsertLocations,
-    fetchCatalogObject
-} from './syncToSupabase.js'
-
 import {
     getCategoryFromName,
     getMinimumStockByCategory,
@@ -52,7 +44,7 @@ app.post('/api/sync', (req, res) => {
 
     try {
         const {type = 'full'} = req.body; // default = full sync
-        const scriptPath = path.resolve(process.cwd(), 'src', 'syncToSupabase.js');
+        const scriptPath = path.resolve(process.cwd(), 'backend', 'src', 'syncToSupabase.js');
 
         console.log(`Spawning sync script (${type}) at:`, scriptPath);
 
@@ -88,346 +80,467 @@ app.post('/api/sync', (req, res) => {
     }
 });
 
-// --- Low-stock endpoint (fixed & integrated snippet) ---
+
+const fetchAllLocations = async () => {
+
+    const {data: locationsData, error: locationsError} = await supabase
+        .from('locations')
+        .select('id, name');
+    if (locationsError) throw locationsError;
+
+    return locationsData;
+}
+
+// Fetches all products in batches
+export const fetchAllProducts = async () => {
+    let allProducts = [];
+    let page = 0;
+    const productPageSize = 1000;
+    let hasMoreProducts = true;
+
+    while (hasMoreProducts) {
+        const {data, error} = await supabase
+            .from('products')
+            .select('id, name, sku, category, square_id')
+            .eq('is_deleted', false)
+            .range(page * productPageSize, (page + 1) * productPageSize - 1)
+            .order('id');
+
+        if (error) throw error;
+        allProducts = allProducts.concat(data || []);
+        hasMoreProducts = (data || []).length === productPageSize;
+        page++;
+    }
+    return allProducts;
+}
+
+const fetchAllVariations = async () => {
+    let allVariations = [];
+    let variationPage = 0;
+    const variationPageSize = 1000;
+    let hasMoreVariations = true;
+
+    // A variation has a product_id that is the id of a product, that is how the category can be gotten, just reference the parent product
+    while (hasMoreVariations) {
+        const {data, error} = await supabase
+            .from('product_variations')
+            .select('id, product_id, square_variation_id, name, sku, price')
+            .eq('is_deleted', false)
+            .range(variationPage * variationPageSize, (variationPage + 1) * variationPageSize - 1)
+            .order('id');
+
+        if (error) throw error;
+        allVariations = allVariations.concat(data || []);
+        hasMoreVariations = (data || []).length === variationPageSize;
+        variationPage++;
+    }
+    return allVariations;
+}
+
+const normalizeCategory = s => (s || '').toString().trim().toLowerCase();
+
+const fetchAllInventory = async () => {
+    let allInventory = [];
+    let inventoryPage = 0;
+    const inventoryPageSize = 1000;
+    let hasMoreInventory = true;
+
+    while (hasMoreInventory) {
+        const {data, error} = await supabase
+            .from('inventory')
+            .select('location_id, product_id, variation_id, quantity')
+            .range(inventoryPage * inventoryPageSize, (inventoryPage + 1) * inventoryPageSize - 1)
+            .order('id');
+
+        if (error) throw error;
+        allInventory = allInventory.concat(data || []);
+        hasMoreInventory = (data || []).length === inventoryPageSize;
+        inventoryPage++;
+    }
+    return allInventory;
+}
+
+const WINDOW_DAYS = 14;
+const fetchRecentSales = async () => {
+
+    const since = new Date(Date.now() - WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
+    let allSales = [];
+    let salesPage = 0;
+    const salesPageSize = 1000;
+    let hasMoreSales = true;
+
+    while (hasMoreSales) {
+        const {data, error} = await supabase
+            .from('sales')
+            .select('location_id, product_id, variation_id, quantity, sale_date')
+            .gte('sale_date', since)
+            .range(salesPage * salesPageSize, (salesPage + 1) * salesPageSize - 1)
+            .order('sale_date', {ascending: false});
+
+        if (error) throw error;
+        allSales = allSales.concat(data || []);
+        hasMoreSales = (data || []).length === salesPageSize;
+        salesPage++;
+    }
+    return allSales;
+}
+
 app.get('/api/low-stock', async (req, res) => {
     try {
-        let start = Date.now();
-        let entireProcess = Date.now();
+        const entireProcess = Date.now();
+        console.log('>>> [/api/low-stock] START');
 
-        console.log('>>> /api/low-stock START')
-
-        start = Date.now();
         // --- Fetch all locations ---
-        const {data: locationsData, error: locationsError} = await supabase
-            .from('locations')
-            .select('id, name'); // each location has id, name, square_id (these are the important fields)
-        if (locationsError) throw locationsError;
-        // console.log('locations count:', (locationsData || []).length);
-        // console.log('locations sample:', (locationsData || []).slice(0, 3));
+        const locationsData = await fetchAllLocations();
+        console.log(`>>> [/api/low-stock] Fetched ${locationsData.length} locations`);
 
-        console.log(`>>> /api/low-stock fetched locations in ${Date.now() - start} ms`)
-
-        let allProducts = [];
-        let page = 0;
-        const pageSize = 1000;
-        let hasMore = true;
-
-        start = Date.now();
-        while (hasMore) {
-            const {data, error} = await supabase
-                .from('products')
-                .select('id, name, sku') // every product has an id, name, sku
-                .range(page * pageSize, (page + 1) * pageSize - 1);
-
-            if (error) throw error;
-
-            allProducts = allProducts.concat(data || []);
-            hasMore = (data || []).length === pageSize;
-            page++;
+        // --- Fetch all products ---
+        const allProducts = await fetchAllProducts();
+        console.log(`>>> [/api/low-stock] Fetched ${allProducts.length} products.`);
+        /*
+        {
+            id: "04a35539-c932-4bca-b57f-10ef4699d3fb",
+            name: "Sapporo 22oz",
+            sku: null,
+            category: "Imported Beer",
+            square_id: "OQZDQZLC4BML34QGJH6NH4H3",
         }
+        */
 
-        const productsData = allProducts;
-        console.log(`>>> /api/low-stock fetched products in ${Date.now() - start} ms`)
-
-        let inventoryRows = [];
-        let invFrom = 0;
-        const invChunk = 1000;
-        let invDone = false;
-
-        start = Date.now();
-        while (!invDone) {
-            const {data: invChunkData, error: invChunkError} = await supabase
-                .from('inventory')
-                .select('location_id, product_id,  quantity', {count: 'exact'})
-                .range(invFrom, invFrom + invChunk - 1);
-
-            if (invChunkError) {
-                console.error('Error fetching inventory chunk:', {from: invFrom, chunkSize: invChunk, error: invChunkError});
-                // bail out (so the endpoint still responds) — or you can throw to fail fast
-                break;
-            }
-
-            if (!invChunkData || invChunkData.length === 0) {
-                invDone = true;
-                break;
-            }
-
-            inventoryRows.push(...invChunkData);
-            invFrom += invChunk;
-
-            if (invChunkData.length < invChunk) invDone = true;
+        // --- Fetch all variations in batches ---
+        const allVariations = await fetchAllVariations();
+        /*
+        {
+            id: "093eded6-6118-495d-9244-303535b6f602",
+            product_id: "590e60be-13b1-4d63-ab0a-670e677f92bf",
+            square_variation_id: "GMYA36PWLBUWQ2ZBMRVSDEGU",
+            name: "Regular",
+            sku: "026400700081",
+            price: 2.99,
         }
+        */
+        console.log(`>>> [/api/low-stock] Fetched ${allVariations.length} variations.`);
 
-        console.log(`>>> /api/low-stock fetched inventory in ${Date.now() - start} ms`)
+        // Build lookup maps, using the id of the product as the index, and then the whole product
+        const productMap = new Map(allProducts.map(p => [p.id, p]));
+        /* in the product_variation table, id here, is the product_id in the table
+        [
+        "09c85161-df12-4277-b1f6-17abcbabfaa5",
+            {
+                id: "09c85161-df12-4277-b1f6-17abcbabfaa5",
+                name: "Organic Valley, Reduced Fat 2% Ultra Pasteurized Milk, Organic, Local",
+                sku: null,
+                category: null,
+                square_id: "4UCNFZNXHYR3CA77ZCYSTOK5",
+            },
+        ]
+        */
 
-        // Creates a map of inventory where key is product_id, and value is array of objects with location_id and quantity
-        const inventoryMap = new Map();
-        (inventoryRows || []).forEach(r => {
-            if (!r || r.product_id === null || r.product_id === undefined) return;
-            const pid = String(r.product_id).trim().toLowerCase();
+        const variationMap = new Map();
 
-            if (!inventoryMap.has(pid)) inventoryMap.set(pid, []);
-            inventoryMap.get(pid).push({
-                location_id: r.location_id ? String(r.location_id).trim().toLowerCase() : null,
-                quantity: (r.quantity === null || r.quantity === undefined) ? null : Number(r.quantity)
+        allVariations.forEach(variation => {
+            // Get the parent product of the variation, by using the lookup map 
+            const product = productMap.get(variation.product_id);
+
+            // Now use the variation id to set the rest of the data to the variation data + parent data
+            variationMap.set(variation.id, {
+                ...variation,
+                product: product
             });
         });
 
-
-        // --- Fetch recent sales in chunks ---
-        const WINDOW_DAYS = 14;
-        const since = new Date(Date.now() - WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
-
-        let allSales = [];
-        let from = 0;
-        const chunkSize = 1000;
-        let done = false;
-
-        start = Date.now();
-        while (!done) {
-            const {data, error} = await supabase
-                .from('sales')
-                .select('location_id, product_id, quantity, sale_date', {count: 'exact'})
-                .gte('sale_date', since)
-                .range(from, from + chunkSize - 1);
-
-            if (error) {
-                console.error('Error fetching sales chunk:', error);
-                break;
-            }
-
-            if (!data || data.length === 0) {
-                done = true;
-                break;
-            }
-
-            allSales.push(...data);
-            from += chunkSize;
-
-            if (data.length < chunkSize) done = true;
+        // --- Fetch inventory ---
+        const allInventory = await fetchAllInventory();
+        /*
+        {
+            location_id: "9e1989e6-1f02-4d40-ae1a-1d0614070274",
+            product_id: "0d6836e5-5b08-4ccb-af6b-6a0ab2c74243",
+            variation_id: null,
+            quantity: 0,
         }
+        */
+        console.log(`>>> [/api/low-stock] Fetched ${allInventory.length} inventory records.`);
 
-        console.log(`>>> /api/low-stock fetched sales in ${Date.now() - start} ms`)
+        // --- Fetch recent sales ---
+        const allSales = await fetchRecentSales();
+        /* 
+        {
+            location_id: "070620de-e568-4c41-b3b7-c19774434d57",
+            product_id: "cc3f6e36-53ef-4e09-8163-e8fb0ab600e1",
+            variation_id: "75b75659-4938-445f-9d40-e4d27ee6906b",
+            quantity: 2,
+            sale_date: "2025-08-31T03:52:53.035+00:00",
+        }
+        so here, the product is La Crema Sonoma Coast Chardonney White Wine
+        This information is gotten from the products table by using the product_id as "id" in the table
+        Using variation_id as "id" in the product_variations table will get us the name of the variation "Regular". 
+        Sales for this product and its specific variation should still be aggregated though. 
+        */
+        console.log(`>>> [/api/low-stock] Fetched ${allSales.length} sales records.`);
 
-        // --- Aggregate sales ---
+
+        // --- Aggregate sales by variation/product and location ---
         const salesAgg = new Map();
         allSales.forEach(s => {
-            const key = `${s.product_id}::${s.location_id || 'all'}`;
-            salesAgg.set(key, (salesAgg.get(key) || 0) + (s.quantity || 0));
+            // Prefer variation_id, fallback to product_id
+            const itemId = s.variation_id || s.product_id;
+            const key = `${itemId}::${s.location_id}`;
+            salesAgg.set(key, (salesAgg.get(key) || 0) + (s.quantity || 0)); // fast way of getting and modifying value from hashmap
         });
 
-        // --- Convert aggregated Map to JSON array ---
-        const salesJson = Array.from(salesAgg.entries()).map(([key, quantity]) => {
-            const [product_id, location_id] = key.split('::');
-            return {
-                product_id,
-                location_id,
-                sales: quantity,
-                salesPerDay: quantity / WINDOW_DAYS // average daily sales over WINDOW_DAYS
-            };
-        });
+        const salesMap = new Map(
+            Array.from(salesAgg.entries()).map(([key, quantity]) => {
+                const [item_id, location_id] = key.split('::');
+                return [key, {
+                    item_id,
+                    location_id,
+                    sales: quantity,
+                    salesPerDay: quantity / WINDOW_DAYS
+                }];
+            })
+        );
+        /*
+        key: item_id::location_id 
+        {
+            [
+                "38bb7c2d-a2ff-4899-9bd3-204f08e1b551:: 9e1989e6-1f02-4d40-ae1a-1d0614070274",
+                {
+                    item_id: "38bb7c2d-a2ff-4899-9bd3-204f08e1b551",
+                    location_id: " 9e1989e6-1f02-4d40-ae1a-1d0614070274",
+                    sales: 26,
+                    salesPerDay: 1.8571428571428572,
+                },
+            ]
+        }
+        */
 
-        // console.log('aggregated sales JSON:', salesJson.slice(0, 20)); // sample
+        // --- Build final response ---
+        // const finalResponse = locationsData.map(location => {
+        //     // Sort all of the inventory for this specific location that is being processed
+        //     const locationInventory = allInventory.filter(item => item.location_id === location.id);
 
-        const productMap = new Map(productsData.map(prod => [prod.id, prod]));
-        const salesMap = new Map(salesJson.map(sale => [`${sale.product_id}::${sale.location_id}`, sale]));
+        //     // Group inventory by product for display
+        //     const productGroups = new Map();
 
-        start = Date.now();
-        // Build final locations array with nested products
-        const finalLocations = locationsData.map(location => {
-            // Filter inventory items that belong to this location
-            const locationInventory = inventoryRows.filter(item => item.location_id === location.id);
+        //     locationInventory.forEach(inventoryItem => {
+        //         const productId = inventoryItem.product_id;
 
-            // Map inventory items to products
-            const products = locationInventory.map(inventoryItem => {
-                const product = productMap.get(inventoryItem.product_id);
-                const sale = salesMap.get(`${inventoryItem.product_id}::${inventoryItem.location_id}`);
+        //         if (!productGroups.has(productId)) {
+        //             const product = productMap.get(productId);
+        //             productGroups.set(productId, {
+        //                 product: product,
+        //                 variations: []
+        //             });
+        //         }
 
-                const productCategory = getCategoryFromName(product.name);
+        //         // Get variation details
+        //         const variation = inventoryItem.variation_id ?
+        //             variationMap.get(inventoryItem.variation_id) : null;
 
-                // Business rules
-                const unitsPerCase = getUnitsPerCaseFromName(product.name, productCategory);
-                const minStockRule = getMinimumStockFromName(product.name, sale?.salesPerDay);
+        //         // Get sales data (prefer variation, fallback to product)
+        //         const salesKey = inventoryItem.variation_id ?
+        //             `${inventoryItem.variation_id}:: ${location.id}` :
+        //             `${inventoryItem.product_id}:: ${location.id}`;
+        //         const sale = salesMap.get(salesKey);
+
+        //         // Get the relevant product (either from variation or direct)
+        //         const relevantProduct = variation?.product || productMap.get(productId);
+        //         const productCategory = relevantProduct?.category?.trim() || 'Uncategorized';
+
+        //         // Calculate recommendation for this item
+        //         const itemName = variation?.name || relevantProduct?.name;
+        //         const unitsPerCase = getUnitsPerCaseFromName(itemName, productCategory);
+        //         const minStockRule = getMinimumStockFromName(itemName, sale?.salesPerDay);
+        //         const categoryMinStock = getMinimumStockByCategory(productCategory, sale?.salesPerDay);
+        //         const minimumStock = (minStockRule && minStockRule.minimumStock) || categoryMinStock || 0;
+
+        //         let suggestedOrderUnits = Math.max(minimumStock - (inventoryItem.quantity || 0), 0);
+        //         if (suggestedOrderUnits > 0 && unitsPerCase > 1) {
+        //             suggestedOrderUnits = Math.ceil(suggestedOrderUnits / unitsPerCase) * unitsPerCase;
+        //         }
+
+        //         const variationData = {
+        //             id: inventoryItem.variation_id || inventoryItem.product_id,
+        //             variation_id: inventoryItem.variation_id,
+        //             variation_name: variation?.name,
+        //             variation_sku: variation?.sku,
+        //             variation_price: variation?.price,
+        //             category: productCategory,
+        //             sales: sale?.sales || 0,
+        //             salesPerDay: sale?.salesPerDay || 0,
+        //             inventory: inventoryItem.quantity,
+        //             minimumStock,
+        //             unitsPerCase,
+        //             low_stock: (inventoryItem.quantity || 0) < minimumStock,
+        //             suggested_order: suggestedOrderUnits,
+        //         };
+
+        //         productGroups.get(productId).variations.push(variationData);
+        //         /*
+        //         [
+        //             "86c71068-e185-4bfb-ad9f-4e5fc692d652",
+        //             {
+        //                 product: {
+        //                     id: "86c71068-e185-4bfb-ad9f-4e5fc692d652",
+        //                     name: "Barefoot Pinot Grigio 750ml",
+        //                     sku: null,
+        //                     category: null,
+        //                 },
+        //                 variations: [
+        //                 ],
+        //             },
+        //         ]
+        //         */
+        //     });
+
+        //     // Convert to final product format with aggregated data
+        //     const products = Array.from(productGroups.values()).map(group => {
+        //         const product = group.product;
+        //         const variations = group.variations;
+
+        //         // Use the category from the first variation (they should all be the same since they're from the same product)
+        //         const productCategory = variations.length > 0 ? variations[0].category : (product?.category?.trim() || 'Uncategorized');
+
+        //         // Calculate product-level aggregates
+        //         const totalSales = variations.reduce((sum, v) => sum + (v.sales || 0), 0);
+        //         const totalInventory = variations.reduce((sum, v) => sum + (v.inventory || 0), 0);
+        //         const totalSuggestedOrder = variations.reduce((sum, v) => sum + (v.suggested_order || 0), 0);
+        //         const hasLowStock = variations.some(v => v.low_stock);
+
+        //         return {
+        //             id: product?.id,
+        //             name: product?.name,
+        //             sku: product?.sku || null,
+        //             category: productCategory,
+        //             sales: totalSales,
+        //             salesPerDay: totalSales / WINDOW_DAYS,
+        //             inventory: totalInventory,
+        //             low_stock: hasLowStock,
+        //             suggested_order: totalSuggestedOrder,
+        //             variations: variations,
+        //         };
+        //     });
+
+        //     return {id: location.id, name: location.name, products};
+        // });
+
+        const normalizeCategory = s => (s || '').toString().trim().toLowerCase();
+
+        const finalResponse = locationsData.map(location => {
+            const locationInventory = allInventory.filter(item => item.location_id === location.id); // correct
+
+            const productGroups = new Map();
+
+            locationInventory.forEach(inventoryItem => {
+                const productId = inventoryItem.product_id;
+
+                //          {
+                //     location_id: "9e1989e6-1f02-4d40-ae1a-1d0614070274",
+                //     product_id: "0d6836e5-5b08-4ccb-af6b-6a0ab2c74243",
+                //     variation_id: null,
+                //     quantity: 0,
+                // }
+                if (!productGroups.has(productId)) {
+                    const product = productMap.get(productId);
+
+                    productGroups.set(productId, {
+                        product: product,
+                        variations: []
+                    });
+                }
+
+                const variation = inventoryItem.variation_id
+                    ? variationMap.get(inventoryItem.variation_id)
+                    : null;
+
+                // Like was mentioned before, the variation is the first key and the product key is the fallback
+                // Construct the sales key
+                const salesKey = inventoryItem.variation_id
+                    ? `${inventoryItem.variation_id}::${location.id}`
+                    : `${inventoryItem.product_id}::${location.id}`;
+
+                // Use the constructed sales key to get the sales for this specific item
+                const sale = salesMap.get(salesKey);
+
+                // Either we have the variation of the parent product if no variation was previously found
+                // This should have the relevant product info (like category) since it was added to the variation 
+                console.log(variation);
+                const relevantProduct = variation?.product || productMap.get(productId);
+
+                // Always pull category directly from product table, normalize it
+                const productCategory = relevantProduct?.category
+                    ? normalizeCategory(relevantProduct.category)
+                    : 'uncategorized';
+
+                const itemName = variation?.name || relevantProduct?.name;
+                const unitsPerCase = getUnitsPerCaseFromName(itemName, productCategory);
+                const minStockRule = getMinimumStockFromName(itemName, sale?.salesPerDay);
                 const categoryMinStock = getMinimumStockByCategory(productCategory, sale?.salesPerDay);
+                const minimumStock = (minStockRule && minStockRule.minimumStock) || categoryMinStock || 0;
 
-                // Use product-specific min stock if defined, otherwise fallback to category-level
-                const minimumStock = minStockRule?.minimumStock || categoryMinStock;
-
-                // Suggested order = how many units to reach minimum stock, rounded to case size
                 let suggestedOrderUnits = Math.max(minimumStock - (inventoryItem.quantity || 0), 0);
                 if (suggestedOrderUnits > 0 && unitsPerCase > 1) {
                     suggestedOrderUnits = Math.ceil(suggestedOrderUnits / unitsPerCase) * unitsPerCase;
                 }
 
-                return {
-                    id: inventoryItem.product_id,
-                    name: product?.name,
-                    sku: product?.sku || null,
-                    category: productCategory,
+                const variationData = {
+                    id: inventoryItem.variation_id || inventoryItem.product_id,
+                    variation_id: inventoryItem.variation_id,
+                    variation_name: variation?.name,
+                    variation_sku: variation?.sku,
+                    variation_price: variation?.price,
+                    category: productCategory, // normalized + consistent
                     sales: sale?.sales || 0,
                     salesPerDay: sale?.salesPerDay || 0,
                     inventory: inventoryItem.quantity,
                     minimumStock,
                     unitsPerCase,
-                    low_stock: inventoryItem.quantity < minimumStock,
-                    suggested_order: suggestedOrderUnits
+                    low_stock: (inventoryItem.quantity || 0) < minimumStock,
+                    suggested_order: suggestedOrderUnits,
+                };
+
+                productGroups.get(productId).variations.push(variationData);
+            });
+
+            const products = Array.from(productGroups.values()).map(group => {
+                const product = group.product;
+                const variations = group.variations;
+
+                // Category: always normalize directly from DB (ignore variation “guesses”)
+                const productCategory = product?.category
+                    ? normalizeCategory(product.category)
+                    : 'uncategorized';
+
+                const totalSales = variations.reduce((sum, v) => sum + (v.sales || 0), 0);
+                const totalInventory = variations.reduce((sum, v) => sum + (v.inventory || 0), 0);
+                const totalSuggestedOrder = variations.reduce((sum, v) => sum + (v.suggested_order || 0), 0);
+                const hasLowStock = variations.some(v => v.low_stock);
+
+                return {
+                    id: product?.id,
+                    name: product?.name,
+                    sku: product?.sku || null,
+                    category: productCategory, // normalized consistently
+                    sales: totalSales,
+                    salesPerDay: totalSales / WINDOW_DAYS,
+                    inventory: totalInventory,
+                    low_stock: hasLowStock,
+                    suggested_order: totalSuggestedOrder,
+                    variations: variations,
                 };
             });
 
-            return {
-                id: location.id,
-                name: location.name,
-                products
-            };
+            return {id: location.id, name: location.name, products};
         });
-        console.log(`>>> /api/low-stock built final response in ${Date.now() - start} ms`)
-        console.log(`>>> /api/low-stock END in ${(Date.now() - entireProcess) / 1000}s`)
 
-        // Respond
-        res.json({locations: finalLocations});
-        return;
 
+        console.log(`>>> [/api/low - stock] END in ${(Date.now() - entireProcess) / 1000}s`);
+        // console.log(finalResponse); // optionally comment out if large
+        res.json({locations: finalResponse});
     } catch (err) {
-        console.error('Error fetching low-stock items:', err)
-        res.status(500).json({error: err.message || 'Internal server error'})
-    }
-})
-
-// --- Low-stock endpoint (joined inventory + product -> locations JSON) ---
-app.get('/api/low-stock', async (req, res) => {
-    try {
-        console.log('>>> /api/low-stock START')
-
-        // optional: filter by a single location to reduce traffic
-        const {locationId} = req.query;
-
-        // 1) fetch locations (we still need names)
-        const {data: locationsData, error: locationsError} = await supabase
-            .from('locations')
-            .select('id, name');
-        if (locationsError) throw locationsError;
-
-        // build a location map so we always return all locations (even if no products)
-        const locationMap = new Map();
-        for (const loc of locationsData || []) {
-            locationMap.set(String(loc.id), {id: loc.id, name: loc.name, products: []});
-        }
-
-        // 2) fetch inventory rows with embedded product info (one DB call)
-        //    This relies on the FK relationship inventory.product_id -> products.id
-        //    PostgREST (Supabase) will return product as an object if you select it like below.
-        let inventoryQuery = supabase
-            .from('inventory')
-            .select(`
-        product_id,
-        location_id,
-        quantity,
-        product:products(id, name, sku, category)
-      `);
-
-        if (locationId) inventoryQuery = inventoryQuery.eq('location_id', locationId);
-
-        const {data: invRows = [], error: invError} = await inventoryQuery;
-        if (invError) throw invError;
-
-        console.log(`>>> /api/low-stock fetched ${invRows.length} inventory rows`);
-
-        // 3) fetch recent sales for WINDOW_DAYS and aggregate (same approach you had)
-        const WINDOW_DAYS = 14;
-        const since = new Date(Date.now() - WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
-
-        let salesQuery = supabase
-            .from('sales')
-            .select('product_id, location_id, quantity')
-            .gte('sale_date', since);
-
-        if (locationId) salesQuery = salesQuery.eq('location_id', locationId);
-
-        const {data: recentSales = [], error: salesError} = await salesQuery;
-        if (salesError) throw salesError;
-
-        // aggregate sales: key = `${product_id}::${location_id || 'all'}`
-        const salesAgg = new Map();
-        for (const s of recentSales) {
-            const key = `${s.product_id}::${s.location_id || 'all'}`;
-            salesAgg.set(key, (salesAgg.get(key) || 0) + (s.quantity || 0));
-        }
-
-        // helper: get aggregated sale for product/location
-        const getSale = (productId, locId) => {
-            const keyLoc = `${productId}::${locId}`;
-            const keyAll = `${productId}::all`;
-            const qty = salesAgg.get(keyLoc) ?? salesAgg.get(keyAll) ?? 0;
-            return {
-                sales: qty,
-                salesPerDay: qty / WINDOW_DAYS
-            };
-        };
-
-        // 4) For each inventory row, compose a product object and push into the relevant location
-        for (const row of invRows) {
-            // if product was not embedded (shouldn't happen if FK exists), skip
-            const product = row.product || null;
-            if (!product) {
-                console.warn('Inventory row missing joined product:', row);
-                continue;
-            }
-
-            const locId = row.location_id ? String(row.location_id) : null;
-            const locEntry = locationMap.get(String(locId)) || null;
-
-            // If the inventory row references a location that's not in locations table, create a placeholder
-            if (!locEntry) {
-                // optionally create a placeholder location entry
-                locationMap.set(String(locId), {
-                    id: row.location_id,
-                    name: '(unknown location)',
-                    products: []
-                });
-            }
-
-            const sale = getSale(row.product_id, row.location_id);
-
-            const productCategory = getCategoryFromName(product.name);
-            const unitsPerCase = getUnitsPerCaseFromName(product.name, productCategory);
-            const minStockRule = getMinimumStockFromName(product.name, sale.salesPerDay);
-            const categoryMinStock = getMinimumStockByCategory(productCategory, sale.salesPerDay);
-            const minimumStock = (minStockRule && minStockRule.minimumStock) || categoryMinStock || 0;
-
-            const currentQty = (row.quantity === null || row.quantity === undefined) ? 0 : Number(row.quantity);
-            let suggestedOrderUnits = Math.max(minimumStock - currentQty, 0);
-            if (suggestedOrderUnits > 0 && unitsPerCase > 1) {
-                suggestedOrderUnits = Math.ceil(suggestedOrderUnits / unitsPerCase) * unitsPerCase;
-            }
-
-            const productObj = {
-                id: row.product_id,
-                name: product.name,
-                sku: product.sku || null,
-                category: product.category || productCategory,
-                sales: sale.sales || 0,
-                salesPerDay: sale.salesPerDay || 0,
-                inventory: currentQty,
-                minimumStock,
-                unitsPerCase,
-                low_stock: currentQty < minimumStock,
-                suggested_order: suggestedOrderUnits
-            };
-
-            // push product into location entry
-            const target = locationMap.get(String(locId));
-            target.products.push(productObj);
-        }
-
-        // 5) final array: make sure to include all locations even if they have no products
-        const finalLocations = Array.from(locationMap.values());
-
-        console.log('>>> /api/low-stock END');
-
-        return res.json({locations: finalLocations});
-    } catch (err) {
-        console.error('Error building low-stock JSON:', err);
-        return res.status(500).json({error: err.message || 'Internal server error'});
+        console.error('>>> [/api/low-stock] Error fetching low-stock items:', err);
+        res.status(500).json({error: err.message || 'Internal server error'});
     }
 });
 
@@ -486,5 +599,5 @@ app.get('/api/products', async (req, res) => {
 
 
 app.listen(PORT, () => {
-    console.log(`Backend server listening on port ${PORT}`)
+    console.log(`Backend server listening on port ${PORT} `)
 })
