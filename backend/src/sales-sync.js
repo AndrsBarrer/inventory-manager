@@ -184,7 +184,7 @@ async function fetchRecentSalesFromSquare(options, squareLocationIds = [], days 
             const orders = Array.isArray(data.orders) ? data.orders : [];
 
             if (orders.length) {
-                console.log(`[fetchRecentSalesFromSquare] fetched ${orders.length} orders (locations ${locs.join(', ')}, page ${page + 1})`);
+                console.log(`[fetchRecentSalesFromSquare] fetched ${orders.length} orders, page ${page + 1})`);
                 for (const order of orders) {
                     const orderId = order.id || null;
                     const closedAt = order.closed_at || order.created_at || null;

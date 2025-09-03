@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from 'react'
+import React, {useEffect, useRef, useState} from 'react'
 import {Card, CardContent, CardHeader, CardTitle} from '@/components/ui/card'
 import {Button} from '@/components/ui/button'
 import {Tabs, TabsList, TabsTrigger, TabsContent} from '@/components/ui/tabs'
@@ -22,6 +22,7 @@ export interface Product {
 }
 
 export const InventoryDashboard: React.FC = () => {
+  // existing state
   const [lowStockItems, setLowStockItems] = useState<Product[]>([])
   const [locations, setLocations] = useState<{id: string; name: string}[]>([])
   const [loadingLow, setLoadingLow] = useState(false)
@@ -34,6 +35,14 @@ export const InventoryDashboard: React.FC = () => {
   const [syncing, setSyncing] = useState(false)
   const [syncType, setSyncType] = useState<'full' | 'products' | 'locations' | 'sales' | 'inventory'>('full')
   const [syncMessage, setSyncMessage] = useState<string>('')
+
+  // new refs / state for scrollable tabs
+  const tabsRowRef = useRef<HTMLDivElement | null>(null)
+  const [showLeftArrow, setShowLeftArrow] = useState(false)
+  const [showRightArrow, setShowRightArrow] = useState(false)
+
+  // threshold to switch to dropdown when categories get huge
+  const DROPDOWN_THRESHOLD = 12
 
   // reset page and category when location or items change
   useEffect(() => {
@@ -58,18 +67,6 @@ export const InventoryDashboard: React.FC = () => {
       setSyncMessage('')
     }, 300)
   }
-
-  const scratcherNames = [
-    "7's",
-    "Loteria",
-    "Lotteria",
-    "Joker's Wild Poker",
-    "15X",
-    "100X",
-    "Sunny Money",
-    "California Black Premium"
-  ].map(n => n.toLowerCase())
-
   const fetchLowStock = async () => {
     setLoadingLow(true)
     try {
@@ -78,8 +75,6 @@ export const InventoryDashboard: React.FC = () => {
 
       // Only keep specific locations 
       const apiLocations = (data.locations || []).filter((loc: any) => loc.name === 'Wolf Liquor' || loc.name === 'MAIN ST MARKET' || loc.name === 'Surf Liquor')
-
-      console.log(apiLocations)
 
       // flatten and normalize product shape
       const allLowStockProducts = apiLocations.flatMap((loc: any) =>
@@ -109,7 +104,6 @@ export const InventoryDashboard: React.FC = () => {
       setLoadingLow(false)
     }
   }
-
 
   useEffect(() => {fetchLowStock()}, [])
 
@@ -148,7 +142,12 @@ export const InventoryDashboard: React.FC = () => {
 
   // categories for current location (normalize null/undefined -> "Uncategorized")
   const categoriesSet = new Set<string>()
-  locationFiltered.forEach(p => categoriesSet.add((p.category || 'Uncategorized') as string))
+  locationFiltered.forEach(p => {
+    const cat = (p.category || 'Uncategorized').toString()
+    if (cat.toLowerCase() !== 'scratchers') { // exclude scratchers
+      categoriesSet.add(cat)
+    }
+  })
   const categories = ['all', ...Array.from(categoriesSet).sort()]
 
   // clamp activeCategory if it no longer exists (e.g., after a sync)
@@ -159,6 +158,39 @@ export const InventoryDashboard: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [categories.join('|')]) // run when categories change
 
+  // ---- Scroll helpers ----
+  const updateArrows = () => {
+    const el = tabsRowRef.current
+    if (!el) {
+      setShowLeftArrow(false)
+      setShowRightArrow(false)
+      return
+    }
+    setShowLeftArrow(el.scrollLeft > 8)
+    setShowRightArrow(el.scrollWidth - el.clientWidth - el.scrollLeft > 8)
+  }
+
+  useEffect(() => {
+    updateArrows()
+    const onResize = () => updateArrows()
+    window.addEventListener('resize', onResize)
+    const el = tabsRowRef.current
+    if (el) {
+      el.addEventListener('scroll', updateArrows)
+    }
+    return () => {
+      window.removeEventListener('resize', onResize)
+      if (el) el.removeEventListener('scroll', updateArrows)
+    }
+  }, [categories.length, activeLocation])
+
+  const scrollByAmount = (amount: number) => {
+    const el = tabsRowRef.current
+    if (!el) return
+    el.scrollTo({left: el.scrollLeft + amount, behavior: 'smooth'})
+  }
+
+  // Pagination, sorting and listing (unchanged)
   const categoryFiltered = activeCategory === 'all'
     ? locationFiltered
     : locationFiltered.filter(p => ((p.category || 'Uncategorized') === activeCategory))
@@ -205,15 +237,107 @@ export const InventoryDashboard: React.FC = () => {
             <p>Loading...</p>
           ) : (
             <>
-              {/* Inner tabs: categories for the selected location */}
+              {/* Fixed category tabs area */}
               <div className="mb-4">
-                <Tabs value={activeCategory} onValueChange={(v) => setActiveCategory(v)}>
-                  <TabsList>
-                    {categories.map(cat => (
-                      <TabsTrigger key={cat} value={cat}>{cat === 'all' ? 'All Categories' : cat}</TabsTrigger>
-                    ))}
-                  </TabsList>
-                </Tabs>
+                {categories.length > DROPDOWN_THRESHOLD ? (
+                  <div className="flex gap-3 items-center">
+                    {/* Scrollable tab row with arrows - Fixed container */}
+                    <div className="relative flex-1 min-w-0">
+                      {showLeftArrow && (
+                        <button
+                          aria-label="Scroll categories left"
+                          onClick={() => scrollByAmount(-300)}
+                          className="absolute left-0 top-1/2 -translate-y-1/2 z-10 p-1.5 rounded-full bg-white shadow-md border hover:shadow-lg transition-shadow"
+                        >
+                          <ChevronLeft size={16} />
+                        </button>
+                      )}
+
+                      <div
+                        ref={tabsRowRef}
+                        className="overflow-x-auto scrollbar-hide"
+                        style={{
+                          paddingLeft: showLeftArrow ? '2.5rem' : '0.5rem',
+                          paddingRight: showRightArrow ? '2.5rem' : '0.5rem',
+                          scrollBehavior: 'smooth'
+                        }}
+                      >
+                        <Tabs value={activeCategory} onValueChange={setActiveCategory}>
+                          <TabsList className="inline-flex gap-2 w-max">
+                            {categories.map(cat => (
+                              <TabsTrigger
+                                key={cat}
+                                value={cat}
+                                className="whitespace-nowrap flex-shrink-0"
+                              >
+                                {cat === 'all' ? 'All Categories' : cat}
+                              </TabsTrigger>
+                            ))}
+                          </TabsList>
+                        </Tabs>
+                      </div>
+
+                      {showRightArrow && (
+                        <button
+                          aria-label="Scroll categories right"
+                          onClick={() => scrollByAmount(300)}
+                          className="absolute right-0 top-1/2 -translate-y-1/2 z-10 p-1.5 rounded-full bg-white shadow-md border hover:shadow-lg transition-shadow"
+                        >
+                          <ChevronRight size={16} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  /* Fewer categories: normal tabs with proper overflow handling */
+                  <div className="relative">
+                    <div
+                      ref={tabsRowRef}
+                      className="overflow-x-auto scrollbar-hide"
+                      style={{
+                        paddingLeft: showLeftArrow ? '2.5rem' : '0.5rem',
+                        paddingRight: showRightArrow ? '2.5rem' : '0.5rem',
+                        marginLeft: showLeftArrow ? '-2rem' : '0',
+                        marginRight: showRightArrow ? '-2rem' : '0',
+                        scrollBehavior: 'smooth'
+                      }}
+                    >
+                      <Tabs value={activeCategory} onValueChange={(v) => setActiveCategory(v)}>
+                        <TabsList className="inline-flex gap-2 w-max">
+                          {categories.map(cat => (
+                            <TabsTrigger
+                              key={cat}
+                              value={cat}
+                              className="whitespace-nowrap flex-shrink-0"
+                            >
+                              {cat === 'all' ? 'All Categories' : cat}
+                            </TabsTrigger>
+                          ))}
+                        </TabsList>
+                      </Tabs>
+                    </div>
+
+                    {/* Properly positioned arrows */}
+                    {showLeftArrow && (
+                      <button
+                        aria-label="Scroll categories left"
+                        onClick={() => scrollByAmount(-240)}
+                        className="absolute left-0 top-1/2 -translate-y-1/2 z-10 p-1.5 rounded-full bg-white shadow-md border hover:shadow-lg transition-shadow"
+                      >
+                        <ChevronLeft size={16} />
+                      </button>
+                    )}
+                    {showRightArrow && (
+                      <button
+                        aria-label="Scroll categories right"
+                        onClick={() => scrollByAmount(240)}
+                        className="absolute right-0 top-1/2 -translate-y-1/2 z-10 p-1.5 rounded-full bg-white shadow-md border hover:shadow-lg transition-shadow"
+                      >
+                        <ChevronRight size={16} />
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
 
               {totalPages > 1 && (
@@ -241,14 +365,15 @@ export const InventoryDashboard: React.FC = () => {
                           <p className="font-semibold">{item.name ?? 'Unnamed product'}</p>
                           {item.locationName && <p className="text-xs text-muted-foreground">Location: {item.locationName}</p>}
                           <p className="text-xs text-muted-foreground">Category: {item.category ?? '—'}</p>
+                          <p className="text-xs text-muted-foreground">ID: {item.id ?? '—'}</p>
                           <p className="text-xs text-muted-foreground">SKU: {item.sku ?? '—'}</p>
                           <p className="text-xs text-muted-foreground">Avg daily sales (14d): {fmtAvg(item.salesPerDay)}</p>
                           {item.unitsPerCase !== undefined && <p className="text-xs text-muted-foreground">Units per case: {item.unitsPerCase}</p>}
                           {item.minimumStock !== undefined && <p className="text-xs text-muted-foreground">Minimum stock: {item.minimumStock}</p>}
                         </div>
                         <div className="flex flex-col items-end gap-1">
-                          {lowStockFlag && <AlertTriangle className="text-warning h-5 w-5" />}
-                          <div className={`font-bold ${lowStockFlag ? 'text-warning' : 'text-foreground'}`}>
+                          {lowStockFlag && <AlertTriangle className="text-orange-500 h-5 w-5" />}
+                          <div className={`font-bold ${lowStockFlag ? 'text-orange-600' : 'text-foreground'}`}>
                             Current Stock: {currentStock}
                           </div>
                           <div className="text-sm">
@@ -279,7 +404,7 @@ export const InventoryDashboard: React.FC = () => {
         </TabsContent>
       </Tabs>
 
-      {/* modal unchanged (keep your existing modal JSX) */}
+      {/* Modal */}
       {modalVisible && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div
@@ -292,8 +417,8 @@ export const InventoryDashboard: React.FC = () => {
             <CardContent>
               <p className="text-sm text-muted-foreground">This will pull the latest data from Square into the database and update the dashboard with the most recent information.</p>
               <div className="flex flex-wrap gap-2 mt-4">
-                {['full', 'products', 'locations', 'sales', 'inventory'].map(option => (
-                  <button key={option} type="button" onClick={() => setSyncType(option as any)} disabled={syncing} className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${syncType === option ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'}`}>
+                {(['full', 'products', 'locations', 'sales', 'inventory'] as const).map(option => (
+                  <button key={option} type="button" onClick={() => setSyncType(option)} disabled={syncing} className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${syncType === option ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'}`}>
                     {option.charAt(0).toUpperCase() + option.slice(1)}
                   </button>
                 ))}
