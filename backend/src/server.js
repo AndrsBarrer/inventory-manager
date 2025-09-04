@@ -465,7 +465,6 @@ app.get('/api/low-stock', async (req, res) => {
 
                 // Either we have the variation of the parent product if no variation was previously found
                 // This should have the relevant product info (like category) since it was added to the variation 
-                console.log(variation);
                 const relevantProduct = variation?.product || productMap.get(productId);
 
                 // Always pull category directly from product table, normalize it

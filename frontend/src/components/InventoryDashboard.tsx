@@ -70,6 +70,7 @@ export const InventoryDashboard: React.FC = () => {
   const fetchLowStock = async () => {
     setLoadingLow(true)
     try {
+      console.log(`${import.meta.env.VITE_API_URL}/api/low-stock`);
       const res = await fetch(`${import.meta.env.VITE_API_URL}/api/low-stock`)
       const data = await res.json()
 
@@ -91,8 +92,7 @@ export const InventoryDashboard: React.FC = () => {
         .filter((p: any) => {
           const salesPerDay = Number(p.salesPerDay || 0)
           const name = (p.name || '').toString()
-          const isScratcher = scratcherNames.some(s => name.toLowerCase().includes(s))
-          return Boolean(p.low_stock) && salesPerDay > 0 && !isScratcher && !!p.id
+          return Boolean(p.low_stock) && salesPerDay > 0 && !!p.id
         })
 
       setLowStockItems(allLowStockProducts)
