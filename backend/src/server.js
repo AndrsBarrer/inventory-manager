@@ -44,7 +44,7 @@ app.post('/api/sync', (req, res) => {
 
     try {
         const {type = 'full'} = req.body; // default = full sync
-        const scriptPath = path.resolve(process.cwd(), 'backend', 'src', 'syncToSupabase.js');
+        const scriptPath = path.resolve(process.cwd(), 'src', 'syncToSupabase.js');
 
         console.log(`Spawning sync script (${type}) at:`, scriptPath);
 
